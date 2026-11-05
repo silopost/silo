@@ -14,7 +14,8 @@ services:
     ports: ["${SILO_BT_PG_PORT:-15432}:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "silo", "-d", "silo"]
+      # -h 127.0.0.1: tymczasowy serwer z etapu initdb slucha tylko na sockecie, wiec nie jest "gotowy"
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "silo", "-d", "silo"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -70,6 +71,7 @@ services:
       SILO_DEFAULT_SMTP_TLS: none
       SILO_ALLOW_INSECURE_TRANSPORT: "true"
       SILO_UNDO_WINDOW: 1s # operacje trafiaja na serwer IMAP od razu, backup ich nie gubi
+    restart: on-failure # jak w produkcji: chwilowy brak bazy nie konczy stosu
     ports: ["${SILO_BT_SERVER_PORT:-18080}:8080"]
     depends_on:
       postgres:
