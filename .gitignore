@@ -6,7 +6,6 @@
 # Wolumeny i dane lokalne
 /data/
 /volumes/
-/dev/dms/config/postfix-accounts.cf
 *.local
 
 # Edytory / system

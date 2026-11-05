@@ -1,4 +1,4 @@
-# Szkielet dev (Faza 0). Wymaga repo-rodzenstwa: ../silo-server i ../silo-web.
+# Stos dev. Wymaga repo-rodzenstwa: ../silo-server i ../silo-web.
 # Szkic docelowy: ARCHITECTURE_AND_PLAN.md, sekcja 2.1.
 services:
   postgres:
@@ -15,26 +15,30 @@ services:
       timeout: 3s
       retries: 30
 
-  # Faza 1: docelowy serwer IMAP/SMTP (docker-mailserver). Wymaga kont testowych
-  # (scripts/dev-up.sh) i konfiguracji dev/dms/config - nie uruchamiac w Fazie 0.
-  # mailserver:
-  #   image: ghcr.io/docker-mailserver/docker-mailserver:latest
-  #   hostname: mail.silo.test
-  #   environment:
-  #     ENABLE_RSPAMD: "0"
-  #     ENABLE_SPAMASSASSIN: "0"
-  #     ENABLE_CLAMAV: "0"
-  #     ENABLE_AMAVIS: "0"
-  #     ENABLE_OPENDKIM: "0"
-  #     ENABLE_OPENDMARC: "0"
-  #     ENABLE_POLICYD_SPF: "0"
-  #     ENABLE_FAIL2BAN: "0"
-  #     PERMIT_DOCKER: network
-  #     SSL_TYPE: ""
-  #   volumes:
-  #     - ./dev/dms/config:/tmp/docker-mailserver
-  #     - dms-mail:/var/mail
-  #   ports: ["2525:25", "1143:143", "1587:587"]
+  # Referencyjny serwer IMAP/SMTP (docker-mailserver 16 = Dovecot 2.4). Tylko dev: bez TLS, bez filtrow.
+  # Konta dev1-3@silo.test: dev/dms/config/postfix-accounts.cf (hasla: README, sekcja dev).
+  mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:16
+    hostname: mail.silo.test
+    environment:
+      # odchudzenie na potrzeby dev: bez filtrow i podpisow (to nie jest zakres Silo)
+      ENABLE_RSPAMD: "0"
+      ENABLE_SPAMASSASSIN: "0"
+      ENABLE_CLAMAV: "0"
+      ENABLE_AMAVIS: "0"
+      ENABLE_OPENDKIM: "0"
+      ENABLE_OPENDMARC: "0"
+      ENABLE_POLICYD_SPF: "0"
+      ENABLE_FAIL2BAN: "0"
+      PERMIT_DOCKER: network # Postfix przyjmuje poczte z sieci compose bez auth (seed)
+      SSL_TYPE: "" # dev bez TLS; dovecot.cf dopuszcza plaintext auth
+    volumes:
+      - ./dev/dms/config:/tmp/docker-mailserver
+      - dms-mail:/var/mail
+    ports:
+      - "${SILO_DEV_SMTP_PORT:-2525}:25"
+      - "${SILO_DEV_IMAP_PORT:-1143}:143"
+      - "${SILO_DEV_SUBMISSION_PORT:-1587}:587"
 
   silo-server:
     build:
@@ -48,12 +52,23 @@ services:
       SILO_HTTP_ADDR: ":8080"
       SILO_LOG_FORMAT: text
       SILO_LOG_LEVEL: debug
-      # Przygotowanie pod kolejne fazy (serwer w Fazie 0 moze go jeszcze nie uzywac).
       SILO_DATABASE_URL: postgres://silo:silo@postgres:5432/silo?sslmode=disable
+      SILO_PUBLIC_URL: http://localhost:${SILO_DEV_WEB_PORT:-5173}
+      SILO_SECRET_KEY: ZGV2LW9ubHktZGV2LW9ubHktZGV2LW9ubHktZGV2LTMy # 32 B base64, WYLACZNIE dev
+      SILO_AUTH_MODE: imap
+      SILO_DEFAULT_IMAP_HOST: mailserver
+      SILO_DEFAULT_IMAP_PORT: "143"
+      SILO_DEFAULT_IMAP_TLS: none # tylko dev; prod wymaga implicit/starttls
+      SILO_DEFAULT_SMTP_HOST: mailserver
+      SILO_DEFAULT_SMTP_PORT: "587"
+      SILO_DEFAULT_SMTP_TLS: none
+      SILO_ALLOW_INSECURE_TRANSPORT: "true" # bez tego `none` jest odrzucane przy starcie
     ports: ["${SILO_DEV_SERVER_PORT:-8080}:8080"]
     depends_on:
       postgres:
         condition: service_healthy
+      mailserver:
+        condition: service_started
 
   silo-web:
     image: node:22
@@ -71,4 +86,4 @@ volumes:
   pgdata: {}
   blobs: {}
   web_node_modules: {}
-  # dms-mail: {}  # Faza 1
+  dms-mail: {}

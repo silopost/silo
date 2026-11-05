@@ -1,0 +1,3 @@
+# Dev only: plaintext auth bez TLS (docker-mailserver 16 = Dovecot 2.4).
+# Dla Dovecot 2.3 (docker-mailserver <= 15) odpowiednik: disable_plaintext_auth = no
+auth_allow_cleartext = yes
