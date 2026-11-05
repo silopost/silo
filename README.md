@@ -4,7 +4,7 @@ Self-hosted **klient webowy poczty** (IMAP/SMTP) z UX współczesnego Gmaila: w�
 
 Silo **nie jest serwerem pocztowym**. Łączy się z istniejącym serwerem (docker-mailserver, Dovecot, Gmail IMAP, Office 365 itd.) przez IMAP i SMTP submission – tak jak Roundcube czy Thunderbird. Serwer IMAP pozostaje źródłem prawdy dla poczty. Szczegóły: [sekcja 1 planu](ARCHITECTURE_AND_PLAN.md#1-cel-i-zasady) i [ADR 0005](docs/adr/0005-imap-source-of-truth.md).
 
-> Status: Faza 0 (scaffolding). Projekt nie jest jeszcze użyteczny.
+> Status: Faza 1 (szkielet i środowisko dev). Projekt nie jest jeszcze użyteczny.
 
 ## Repozytoria
 
@@ -25,11 +25,12 @@ git clone https://github.com/silopost/silo-server.git
 git clone https://github.com/silopost/silo-web.git
 
 cd silo
-docker compose -f docker-compose.dev.yml up
+scripts/dev-up.sh
 ```
 
+`scripts/dev-up.sh` sprawdza repozytoria rodzeństwa, tworzy `.env` z `.env.example` (gdy go brak), uruchamia `docker compose -f docker-compose.dev.yml up -d --build`, czeka na serwer pocztowy, zakłada brakujące konta testowe i wypisuje adresy usług. Jest idempotentny. Można podać listę usług, np. `scripts/dev-up.sh postgres mailserver` (sam serwer poczty, bez budowania `silo-server`/`silo-web`).
+
 Repozytoria muszą być rodzeństwem (`silopost/{silo,silo-server,silo-web}`) – compose buduje z `../silo-server` i `../silo-web`.
-Gdy porty są zajęte, skopiuj `.env.example` do `.env` i zmień `SILO_DEV_*_PORT`.
 
 Weryfikacja:
 
@@ -38,7 +39,34 @@ curl localhost:8080/healthz     # silo-server -> 200
 # http://localhost:5173         # silo-web (Vite)
 ```
 
-Serwer pocztowy do testów (docker-mailserver, konta testowe, seed) dojdzie w Fazie 1.
+### Serwer pocztowy, konta i seed (dev)
+
+Do testów działa [docker-mailserver](https://github.com/docker-mailserver/docker-mailserver) 16 (Dovecot 2.4) bez TLS i bez filtrów antyspamowych – wyłącznie do developmentu. Konfiguracja: `dev/dms/config/` (`dovecot.cf` dopuszcza hasło jawne bez TLS).
+
+Konta testowe (hasła wyłącznie deweloperskie, hashe są w repo w `dev/dms/config/postfix-accounts.cf`, dzięki czemu start jest deterministyczny; `dev-up.sh` dodatkowo zakłada brakujące konta):
+
+| Konto | Hasło |
+|---|---|
+| `dev1@silo.test` | `devpass1` |
+| `dev2@silo.test` | `devpass2` |
+| `dev3@silo.test` | `devpass3` |
+
+Seed poczty (`seed/mail/`, ponad 60 fikcyjnych wiadomości: wątki, Sent, out-of-order, HTML, Base64/QP, ISO-8859-2, Windows-1250, załączniki, inline obraz, brak Message-ID):
+
+```sh
+scripts/seed-mail.sh              # SMTP: 54 wiadomości do INBOX dev1@silo.test
+scripts/seed-mail.sh --append     # IMAP APPEND: Sent (11) i 3 wiadomości do INBOX z flagami i datą
+scripts/seed-mail.sh --all --shuffle --delay 1   # oba tryby, losowa kolejność, 1 s przerwy
+scripts/seed-mail.sh --to dev2@silo.test         # inny adresat
+```
+
+Po `--all` `dev1@silo.test` ma 57 wiadomości w INBOX i 11 w Sent. Skrypt nie wykrywa duplikatów; czysty start: `docker compose -f docker-compose.dev.yml down -v`. Korpus jest generowany przez `node scripts/gen-seed.mjs` (wynik jest w repo).
+
+Thunderbird (lub inny klient): serwer przychodzący IMAP `localhost`, port `1143` (z `SILO_DEV_IMAP_PORT`), zabezpieczenie połączenia: brak, uwierzytelnianie: hasło zwykłe; wychodzący SMTP `localhost`, port `1587`, bez szyfrowania, to samo hasło. Użytkownik: pełny adres, np. `dev1@silo.test`.
+
+### Porty
+
+Domyślnie: Postgres `5432`, silo-server `8080`, silo-web `5173`, IMAP `1143`, SMTP `2525`, submission `1587`. Gdy któryś jest zajęty, zmień w `.env` (kopia `.env.example`) odpowiednio `SILO_DEV_PG_PORT`, `SILO_DEV_SERVER_PORT`, `SILO_DEV_WEB_PORT`, `SILO_DEV_IMAP_PORT`, `SILO_DEV_SMTP_PORT`, `SILO_DEV_SUBMISSION_PORT` i uruchom `scripts/dev-up.sh` ponownie. Skrypty działają w Git Bash (Windows) i bash (Linux/macOS).
 
 ## Dokumentacja
 

@@ -71,6 +71,7 @@ read_manifest() {
 
 # IMAP APPEND przez perl w kontenerze (curl -T nie ustawia flag ani INTERNALDATE).
 # argumenty: uzytkownik haslo folder flagi data; tresc wiadomosci na stdin.
+# shellcheck disable=SC2016 # kod perla, nie ma byc rozwijany przez shell
 PERL_APPEND='
 use strict; use IO::Socket::INET;
 my ($u, $p, $box, $flags, $date) = @ARGV;

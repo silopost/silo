@@ -34,3 +34,12 @@ jobs:
             CONTRIBUTING.md
             docs/**/*.md
           config: .markdownlint.yaml
+
+  shellcheck:
+    name: shellcheck scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: ./scripts
