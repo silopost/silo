@@ -4,7 +4,7 @@ Self-hosted **klient webowy poczty** (IMAP/SMTP) z UX współczesnego Gmaila: w�
 
 Silo **nie jest serwerem pocztowym**. Łączy się z istniejącym serwerem (docker-mailserver, Dovecot, Gmail IMAP, Office 365 itd.) przez IMAP i SMTP submission – tak jak Roundcube czy Thunderbird. Serwer IMAP pozostaje źródłem prawdy dla poczty. Szczegóły: [sekcja 1 planu](ARCHITECTURE_AND_PLAN.md#1-cel-i-zasady) i [ADR 0005](docs/adr/0005-imap-source-of-truth.md).
 
-> Status: Faza 2 zamknięta (backend: konta, sync IMAP, write-back, API odczytu i SSE). Brak UI i wysyłki – projekt nie jest jeszcze użyteczny dla użytkownika końcowego; szczegóły w sekcji [Stan: Faza 2](#stan-faza-2).
+> Status: Faza 3 zamknięta – działa klient webowy z układem Gmaila: czytanie, akcje z „Cofnij”, compose z draftami na serwerze, wysyłka z undo send. Brak wyszukiwania z operatorami, snooze, filtrów i wielu kont w UI (Fazy 4–5); szczegóły w sekcji [Stan: Faza 3](#stan-faza-3).
 
 ## Repozytoria
 
@@ -66,6 +66,8 @@ Thunderbird (lub inny klient): serwer przychodzący IMAP `localhost`, port `1143
 
 ### Smoke e2e
 
+DoD Fazy 3 (UI, wysyłka, undo, drafty, offline, a11y) sprawdzają testy Playwright w `silo-web` (`npm run e2e`, opis w README `silo-web`); poniższy skrypt to szybki smoke API z Fazy 2.
+
 Skrypt `scripts/e2e-smoke.sh` sprawdza na działającym stosie dev dwa punkty Definition of done Fazy 2:
 
 - logowanie `dev1@silo.test` (`POST /api/v1/session`) do niepustej listy INBOX (`GET /api/v1/threads?labelId=INBOX`): **< 10 s** (initial sync),
@@ -82,6 +84,24 @@ Bez `jq` (parsowanie `grep`/`sed`), potrzebny tylko `curl` i `docker compose`. A
 ### Porty
 
 Domyślnie: Postgres `5432`, silo-server `8080`, silo-web `5173`, IMAP `1143`, SMTP `2525`, submission `1587`. Gdy któryś jest zajęty, zmień w `.env` (kopia `.env.example`) odpowiednio `SILO_DEV_PG_PORT`, `SILO_DEV_SERVER_PORT`, `SILO_DEV_WEB_PORT`, `SILO_DEV_IMAP_PORT`, `SILO_DEV_SMTP_PORT`, `SILO_DEV_SUBMISSION_PORT` i uruchom `scripts/dev-up.sh` ponownie. Skrypty działają w Git Bash (Windows) i bash (Linux/macOS).
+
+## Stan: Faza 3
+
+Działa (UI `silo-web` 0.2.0 na API `silo-server` 0.3.0): logowanie danymi skrzynki, układ Gmaila (LeftNav z licznikami i folderami, wyszukiwanie pełnotekstowe bez operatorów, banery synchronizacji i offline), lista wątków (wirtualizacja, zaznaczanie, akcje na hover, ikona „oczekuje”), widok wątku (HTML w piaskownicy bez skryptów, obrazy zdalne blokowane, załączniki, treść na żądanie), akcje z natychmiastową zmianą w UI i „Cofnij” (`/operations/{id}/undo` w oknie `SILO_UNDO_WINDOW`), compose w wielu oknach (TipTap, podpowiedzi adresów, załączniki z postępem, autosave na serwer i jedna kopia w folderze Drafts), odpowiedz / odpowiedz wszystkim / przekaż, wysyłka przez SMTP submission z „Cofnij” (undo send), kopią w Sent i `\Answered` na oryginale, skróty `j k o u e # s x z c r a f ?`, logowanie bearer dla klientów natywnych (ADR 0007). Spełnienie Definition of done sprawdzają testy Playwright w `silo-web` (`npm run e2e`, README `silo-web`, sekcja „End-to-end tests”), z weryfikacją stanu serwera przez IMAP.
+
+Pomiary e2e z 5.11.2026 (Windows 11, Docker Desktop, build produkcyjny przez `vite preview`): `e` → wiersz znika z DOM po 15–16 ms (następna klatka 18–20 ms); wiadomość w Archive po 10,0–10,4 s przy oknie 10 s; „Cofnij” → ten sam UID w INBOX, nic w Archive; undo send → po 12 s nic u `dev2@`, bez cofnięcia dostarczenie 0,6 s po oknie; draft w Drafts po 32 s od ostatniego znaku, po zamknięciu okna (`syncNow`) w < 1 s; mailserver zatrzymany → archiwizacja 3 wątków i ikony „oczekuje”, po starcie ikony znikają po ok. 17 s bez odświeżenia; lista 5000 wątków przewinięta do końca w ok. 12 s bez long tasks (0 w końcowym przebiegu; w pojedynczych przebiegach jeden task 50–63 ms przy doładowaniu strony listy); axe (WCAG 2.2 AA) bez naruszeń na logowaniu, liście, wątku i compose; Lighthouse a11y 100 (logowanie i lista, uruchomiony raz ręcznie).
+
+Nie działa jeszcze: operatory wyszukiwania, snooze, filtry, schedule send w UI, edycja etykiet użytkownika, ekran „Dodaj konto” (konto powstaje przy logowaniu), ustawienia (`PATCH /settings`), obrazy inline (`cid:`) w compose, załączniki oryginału przy przekazaniu, obsługa odbić (bounce/DSN), wiele kont w UI – Fazy 4–5.
+
+Jak uruchomić UI:
+
+```sh
+scripts/dev-up.sh                 # cały stos, w tym silo-web (Vite) na :5173
+scripts/seed-mail.sh --all        # przed pierwszym logowaniem
+# http://localhost:5173 -> dev1@silo.test / devpass1
+```
+
+Albo backend w compose i Vite lokalnie: `scripts/dev-up.sh postgres mailserver silo-server`, potem w `silo-web` `VITE_API_PROXY=http://localhost:8090 npm run dev` (port serwera z `SILO_DEV_SERVER_PORT`). Druga skrzynka do odpowiedzi: `dev2@silo.test` / `devpass2` (Thunderbird lub drugie logowanie w innej przeglądarce).
 
 ## Stan: Faza 2
 

@@ -8,6 +8,8 @@
 # Opcje srodowiskowe: SILO_E2E_BASE (domyslnie http://localhost:$SILO_DEV_SERVER_PORT z .env),
 # SILO_E2E_USER/SILO_E2E_PASSWORD (dev1@silo.test / devpass1), SILO_E2E_MIN_INBOX (domyslnie 0).
 # Kod wyjscia: 0 = progi dotrzymane, 1 = przekroczony prog lub blad, 2 = stos niedostepny.
+# DoD Fazy 3 (UI, wysylka, undo, drafty, offline, a11y) sprawdza Playwright w silo-web: `npm run e2e`
+# (README silo-web, sekcja "End-to-end tests"); ten skrypt pozostaje szybkim smoke API z Fazy 2.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
