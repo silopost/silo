@@ -1,0 +1,13 @@
+From: CI Silo <ci@build.example.com>
+To: Dev One <dev1@silo.test>
+Subject: [ci] build #1213 passed
+Date: Wed, 04 Nov 2026 13:33:00 +0100
+Message-ID: <seed-ci1213@build.example.com>
+MIME-Version: 1.0
+X-Seed: silo-dev
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+Build #1213 on main: passed.
+Duration: 4m 22s
+Details: https://ci.example.com/builds/1213

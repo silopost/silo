@@ -1,0 +1,44 @@
+From: =?utf-8?B?U2tsZXAgUHJ6eWvFgmFk?= <billing@shop.example.com>
+To: Dev One <dev1@silo.test>
+Subject: Faktura FV/2026/11/0155
+Date: Tue, 03 Nov 2026 08:00:00 +0100
+Message-ID: <seed-inv155@shop.example.com>
+MIME-Version: 1.0
+X-Seed: silo-dev
+Content-Type: multipart/mixed; boundary="----=_seed_0046_m"
+
+------=_seed_0046_m
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Dzie=C5=84 dobry,
+w za=C5=82=C4=85czniku faktura za zam=C3=B3wienie.
+
+Sklep Przyk=C5=82ad
+------=_seed_0046_m
+Content-Type: text/csv; name="zestawienie-0155.csv"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="zestawienie-0155.csv"
+
+bHA7b3Bpcztrd290YQoxO3BvenljamEgMTsxMC4wMAoyO3BvenljamEgMjsxMS41MAozO3Bvenlj
+amEgMzsxMy4wMAo0O3BvenljamEgNDsxNC41MAo1O3BvenljamEgNTsxNi4wMAo2O3BvenljamEg
+NjsxNy41MAo3O3BvenljamEgNzsxOS4wMAo4O3BvenljamEgODsyMC41MAo5O3BvenljamEgOTsy
+Mi4wMAoxMDtwb3p5Y2phIDEwOzIzLjUwCjExO3BvenljamEgMTE7MjUuMDAKMTI7cG96eWNqYSAx
+MjsyNi41MAoxMztwb3p5Y2phIDEzOzI4LjAwCjE0O3BvenljamEgMTQ7MjkuNTAKMTU7cG96eWNq
+YSAxNTszMS4wMAoxNjtwb3p5Y2phIDE2OzMyLjUwCjE3O3BvenljamEgMTc7MzQuMDAKMTg7cG96
+eWNqYSAxODszNS41MAoxOTtwb3p5Y2phIDE5OzM3LjAwCjIwO3BvenljamEgMjA7MzguNTAKMjE7
+cG96eWNqYSAyMTs0MC4wMAoyMjtwb3p5Y2phIDIyOzQxLjUwCjIzO3BvenljamEgMjM7NDMuMDAK
+MjQ7cG96eWNqYSAyNDs0NC41MAoyNTtwb3p5Y2phIDI1OzQ2LjAwCjI2O3BvenljamEgMjY7NDcu
+NTAKMjc7cG96eWNqYSAyNzs0OS4wMAoyODtwb3p5Y2phIDI4OzUwLjUwCjI5O3BvenljamEgMjk7
+NTIuMDAKMzA7cG96eWNqYSAzMDs1My41MAozMTtwb3p5Y2phIDMxOzU1LjAwCjMyO3BvenljamEg
+MzI7NTYuNTAKMzM7cG96eWNqYSAzMzs1OC4wMAozNDtwb3p5Y2phIDM0OzU5LjUwCjM1O3Bvenlj
+amEgMzU7NjEuMDAKMzY7cG96eWNqYSAzNjs2Mi41MAozNztwb3p5Y2phIDM3OzY0LjAwCjM4O3Bv
+enljamEgMzg7NjUuNTAKMzk7cG96eWNqYSAzOTs2Ny4wMAo0MDtwb3p5Y2phIDQwOzY4LjUwCjQx
+O3BvenljamEgNDE7NzAuMDAKNDI7cG96eWNqYSA0Mjs3MS41MAo0Mztwb3p5Y2phIDQzOzczLjAw
+CjQ0O3BvenljamEgNDQ7NzQuNTAKNDU7cG96eWNqYSA0NTs3Ni4wMAo0Njtwb3p5Y2phIDQ2Ozc3
+LjUwCjQ3O3BvenljamEgNDc7NzkuMDAKNDg7cG96eWNqYSA0ODs4MC41MAo0OTtwb3p5Y2phIDQ5
+OzgyLjAwCjUwO3BvenljamEgNTA7ODMuNTAKNTE7cG96eWNqYSA1MTs4NS4wMAo1Mjtwb3p5Y2ph
+IDUyOzg2LjUwCjUzO3BvenljamEgNTM7ODguMDAKNTQ7cG96eWNqYSA1NDs4OS41MAo1NTtwb3p5
+Y2phIDU1OzkxLjAwCjU2O3BvenljamEgNTY7OTIuNTAKNTc7cG96eWNqYSA1Nzs5NC4wMAo1ODtw
+b3p5Y2phIDU4Ozk1LjUwCjU5O3BvenljamEgNTk7OTcuMDAKNjA7cG96eWNqYSA2MDs5OC41MAo=
+------=_seed_0046_m--

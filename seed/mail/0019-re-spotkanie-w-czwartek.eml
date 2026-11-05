@@ -1,0 +1,32 @@
+From: Dev One <dev1@silo.test>
+To: =?utf-8?B?RXdhIFppZWxpxYRza2E=?= <ewa.zielinska@example.com>
+Cc: Tomasz Lewandowski <t.lewandowski@example.com>
+Subject: Re: Spotkanie w czwartek
+Date: Tue, 03 Nov 2026 14:00:00 +0100
+Message-ID: <seed-t4s@silo.test>
+In-Reply-To: <seed-t4b@example.com>
+References: <seed-t4a@example.com> <seed-t4b@example.com>
+MIME-Version: 1.0
+X-Seed: silo-dev
+Content-Type: multipart/alternative; boundary="----=_seed_0019_a"
+
+------=_seed_0019_a
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+B=C4=99d=C4=99 na miejscu.
+
+Dev One
+------=_seed_0019_a
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html><head><meta charset=3D"utf-8"><title>Re: Spotkanie w czwartek</title>=
+</head>
+<body style=3D"font-family: sans-serif">
+<h2>Re: Spotkanie w czwartek</h2>
+<p>B=C4=99d=C4=99 na miejscu.</p>
+<p>Dev One</p>
+</body></html>
+------=_seed_0019_a--

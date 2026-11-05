@@ -1,0 +1,32 @@
+From: Biuletyn Silo Test <news@news.example.com>
+To: Dev One <dev1@silo.test>
+Subject: =?utf-8?B?Qml1bGV0eW4gU2lsbyBUZXN0?=
+ =?utf-8?B?ICM0Mjogbm93b8WbY2kgdHlnbw==?= =?utf-8?B?ZG5pYQ==?=
+Date: Tue, 03 Nov 2026 07:00:00 +0100
+Message-ID: <seed-news42@news.example.com>
+MIME-Version: 1.0
+X-Seed: silo-dev
+Content-Type: multipart/alternative; boundary="----=_seed_0042_a"
+
+------=_seed_0042_a
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Biuletyn #42
+Najnowsze wpisy: wydajno=C5=9B=C4=87 IMAP, w=C4=85tki, skr=C3=B3ty klawiszo=
+we.
+Wypisz si=C4=99: https://news.example.com/unsubscribe
+------=_seed_0042_a
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html><head><meta charset=3D"utf-8"><title>Biuletyn #42</title></head>
+<body style=3D"font-family: sans-serif">
+<h2>Biuletyn #42</h2>
+<p>Najnowsze wpisy: <a href=3D"https://news.example.com/n/42">wydajno=C5=9B=
+=C4=87 IMAP</a>, w=C4=85tki, skr=C3=B3ty klawiszowe.</p>
+<p><small>Wypisz si=C4=99: <a href=3D"https://news.example.com/unsubscribe"=
+>tutaj</a></small></p>
+</body></html>
+------=_seed_0042_a--

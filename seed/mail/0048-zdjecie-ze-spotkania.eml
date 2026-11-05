@@ -1,0 +1,33 @@
+From: Tomasz Lewandowski <t.lewandowski@example.com>
+To: Dev One <dev1@silo.test>
+Subject: =?utf-8?B?WmRqxJljaWUgemUgc3BvdGthbg==?= =?utf-8?B?aWE=?=
+Date: Wed, 04 Nov 2026 12:15:00 +0100
+Message-ID: <seed-img2@example.com>
+MIME-Version: 1.0
+X-Seed: silo-dev
+Content-Type: multipart/alternative; boundary="----=_seed_0048_a"
+
+------=_seed_0048_a
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Zdj=C4=99cie ze spotkania (obraz osadzony w HTML).
+------=_seed_0048_a
+Content-Type: multipart/related; boundary="----=_seed_0048_r"
+
+------=_seed_0048_r
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<html><body><p>Zdj=C4=99cie ze spotkania:</p><p><img src=3D"cid:img2@silo.t=
+est" alt=3D"obraz" width=3D"1" height=3D"1"></p></body></html>
+------=_seed_0048_r
+Content-Type: image/png; name="obraz.png"
+Content-Transfer-Encoding: base64
+Content-ID: <img2@silo.test>
+Content-Disposition: inline; filename="obraz.png"
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6
+kgAAAABJRU5ErkJggg==
+------=_seed_0048_r--
+------=_seed_0048_a--

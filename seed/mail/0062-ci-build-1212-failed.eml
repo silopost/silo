@@ -1,0 +1,13 @@
+From: CI Silo <ci@build.example.com>
+To: Dev One <dev1@silo.test>
+Subject: [ci] build #1212 FAILED
+Date: Wed, 04 Nov 2026 12:26:00 +0100
+Message-ID: <seed-ci1212@build.example.com>
+MIME-Version: 1.0
+X-Seed: silo-dev
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+Build #1212 on main: FAILED.
+Duration: 3m 21s
+Details: https://ci.example.com/builds/1212

@@ -1,0 +1,18 @@
+From: =?utf-8?B?SmFuIETEhWJyb3dza2k=?= <jan.dabrowski@silo.test>
+To: Dev One <dev1@silo.test>, Dev Two <dev2@silo.test>, Dev Three
+ <dev3@silo.test>
+Subject: Release 2.3 checklist
+Date: Tue, 03 Nov 2026 09:00:00 +0100
+Message-ID: <seed-t3a@silo.test>
+MIME-Version: 1.0
+X-Seed: silo-dev
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Lista przed wydaniem 2.3:
+1. zamro=C5=BCenie ga=C5=82=C4=99zi
+2. smoke testy
+
+Uzupe=C5=82nijcie, prosz=C4=99.
+
+Jan

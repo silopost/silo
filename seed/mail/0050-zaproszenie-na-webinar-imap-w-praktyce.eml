@@ -1,0 +1,12 @@
+From: Biuletyn Silo Test <news@news.example.com>
+To: Dev One <dev1@silo.test>
+Subject: Zaproszenie na webinar: IMAP w praktyce
+Date: Wed, 04 Nov 2026 14:00:00 +0100
+Message-ID: <seed-webinar@news.example.com>
+MIME-Version: 1.0
+X-Seed: silo-dev
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Zapraszamy na webinar 12.11.2026, 18:00.
+Rejestracja: https://news.example.com/webinar

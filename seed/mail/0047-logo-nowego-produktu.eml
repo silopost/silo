@@ -1,0 +1,33 @@
+From: =?utf-8?B?RXdhIFppZWxpxYRza2E=?= <ewa.zielinska@example.com>
+To: Dev One <dev1@silo.test>
+Subject: Logo nowego produktu
+Date: Tue, 03 Nov 2026 11:00:00 +0100
+Message-ID: <seed-img1@example.com>
+MIME-Version: 1.0
+X-Seed: silo-dev
+Content-Type: multipart/alternative; boundary="----=_seed_0047_a"
+
+------=_seed_0047_a
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Logo nowego produktu (obraz osadzony w HTML).
+------=_seed_0047_a
+Content-Type: multipart/related; boundary="----=_seed_0047_r"
+
+------=_seed_0047_r
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<html><body><p>Logo nowego produktu:</p><p><img src=3D"cid:img1@silo.test" =
+alt=3D"obraz" width=3D"1" height=3D"1"></p></body></html>
+------=_seed_0047_r
+Content-Type: image/png; name="obraz.png"
+Content-Transfer-Encoding: base64
+Content-ID: <img1@silo.test>
+Content-Disposition: inline; filename="obraz.png"
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6
+kgAAAABJRU5ErkJggg==
+------=_seed_0047_r--
+------=_seed_0047_a--

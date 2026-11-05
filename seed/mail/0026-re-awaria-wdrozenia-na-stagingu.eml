@@ -1,0 +1,16 @@
+From: Dev One <dev1@silo.test>
+To: Dev Three <dev3@silo.test>
+Subject: =?utf-8?B?UmU6IEF3YXJpYSB3ZHJvxbxlbg==?=
+ =?utf-8?B?aWEgbmEgc3RhZ2luZ3U=?=
+Date: Wed, 04 Nov 2026 08:30:00 +0100
+Message-ID: <seed-t5s2@silo.test>
+In-Reply-To: <seed-t5e@silo.test>
+References: <seed-t5a@silo.test> <seed-t5e@silo.test>
+MIME-Version: 1.0
+X-Seed: silo-dev
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Rollback tak, ale po poprawce migracji.
+
+Dev One
