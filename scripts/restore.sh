@@ -67,6 +67,13 @@ verify_checksum() {
   echo "suma kontrolna $f: OK"
 }
 
+# Polecenie bez szumu postepu compose; wyjscie pokazywane tylko przy bledzie.
+quiet() {
+  local out
+  out="$("$@" 2>&1)" || { printf "%s
+" "$out" >&2; return 1; }
+}
+
 running() { [ -n "$("${COMPOSE[@]}" ps --status running -q "$1")" ]; }
 
 psql_q() {
@@ -122,7 +129,7 @@ fi
 
 if running silo-server; then
   echo "zatrzymuje silo-server..."
-  "${COMPOSE[@]}" stop silo-server > /dev/null
+  quiet "${COMPOSE[@]}" stop silo-server
 fi
 echo "pg_restore ${FILES[0]}..."
 # shellcheck disable=SC2016 # zmienne rozwija powloka kontenera postgres
@@ -131,7 +138,7 @@ echo "pg_restore ${FILES[0]}..."
 
 if [ ${#FILES[@]} -eq 2 ]; then
   # Kontener (i wolumen) moze jeszcze nie istniec: utworz bez uruchamiania.
-  [ -n "$("${COMPOSE[@]}" ps -aq silo-server)" ] || "${COMPOSE[@]}" up --no-start silo-server > /dev/null
+  [ -n "$("${COMPOSE[@]}" ps -aq silo-server)" ] || quiet "${COMPOSE[@]}" up --no-start silo-server
   vol="$(blobs_volume)"
   [ -n "$vol" ] || die "nie znaleziono wolumenu blobow; ustaw SILO_BLOBS_VOLUME"
   echo "bloby ${FILES[1]} -> wolumen $vol..."
@@ -139,5 +146,5 @@ if [ ${#FILES[@]} -eq 2 ]; then
     die "rozpakowanie blobow nie powiodlo sie (silo-server pozostaje zatrzymany)"
 fi
 
-"${COMPOSE[@]}" up -d silo-server > /dev/null
+quiet "${COMPOSE[@]}" up -d silo-server || die "start silo-server nie powiodl sie"
 echo "Gotowe: baza odtworzona, silo-server uruchomiony."

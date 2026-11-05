@@ -9,6 +9,7 @@
 #   --all        oba tryby po kolei.
 # Opcje: --shuffle (losowa kolejnosc), --delay <s> (przerwa miedzy wiadomosciami, np. 1 lub 0.5),
 #        --to <adres> (adresat/wlasciciel skrzynki, domyslnie dev1@silo.test), -h/--help.
+# Srodowisko: SILO_COMPOSE_FILE (domyslnie docker-compose.dev.yml; np. docker-compose.backup-test.yml).
 # Uwaga: skrypt nie sprawdza duplikatow - kolejne uruchomienie dodaje wiadomosci ponownie
 #        (czysty start: docker compose -f docker-compose.dev.yml down -v).
 set -euo pipefail
@@ -17,7 +18,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 export MSYS_NO_PATHCONV=1 # Git Bash na Windows nie moze "poprawiac" argumentow dla docker exec
 
-COMPOSE=(docker compose -f docker-compose.dev.yml)
+COMPOSE=(docker compose -f "${SILO_COMPOSE_FILE:-docker-compose.dev.yml}")
 MANIFEST=seed/mail/manifest.yaml
 REMOTE_DIR=/tmp/silo-seed
 MODE=smtp
@@ -25,7 +26,7 @@ SHUFFLE=0
 DELAY=0
 TO=dev1@silo.test
 
-usage() { sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
