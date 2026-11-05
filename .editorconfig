@@ -1,0 +1,26 @@
+# Wspólna konwencja dla repo silo, silo-server i silo-web (źródło: silo/CONTRIBUTING.md)
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.go]
+indent_style = tab
+
+[go.mod]
+indent_style = tab
+
+[*.{yml,yaml,json,md,ts,tsx,js,jsx,css,html}]
+indent_style = space
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+[*.md]
+trim_trailing_whitespace = false

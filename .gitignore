@@ -1,0 +1,16 @@
+# Sekrety i konfiguracja lokalna
+.env
+.env.*
+!.env.example
+
+# Wolumeny i dane lokalne
+/data/
+/volumes/
+/dev/dms/config/postfix-accounts.cf
+*.local
+
+# Edytory / system
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
