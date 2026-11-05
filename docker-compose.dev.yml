@@ -54,7 +54,7 @@ services:
       SILO_LOG_LEVEL: debug
       SILO_DATABASE_URL: postgres://silo:silo@postgres:5432/silo?sslmode=disable
       SILO_PUBLIC_URL: http://localhost:${SILO_DEV_WEB_PORT:-5173}
-      SILO_SECRET_KEY: ZGV2LW9ubHktZGV2LW9ubHktZGV2LW9ubHktZGV2LTMy # 32 B base64, WYLACZNIE dev
+      SILO_SECRET_KEY: ZGV2LW9ubHktZGV2LW9ubHktZGV2LW9ubHktZGV2MzI= # 32 B base64, WYLACZNIE dev
       SILO_AUTH_MODE: imap
       SILO_DEFAULT_IMAP_HOST: mailserver
       SILO_DEFAULT_IMAP_PORT: "143"
