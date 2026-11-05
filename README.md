@@ -86,6 +86,17 @@ scripts/e2e-smoke.sh              # kod wyjścia 0 = progi dotrzymane, 1 = przek
 
 Bez `jq` (parsowanie `grep`/`sed`), potrzebny tylko `curl` i `docker compose`. Adres bierze z `SILO_DEV_SERVER_PORT` w `.env` (nadpisanie: `SILO_E2E_BASE`), progi: `SILO_E2E_LIST_MAX_MS`, `SILO_E2E_EVENT_MAX_MS`. Pełny pomiar initial sync wymaga świeżej bazy (`docker compose -f docker-compose.dev.yml rm -sf silo-server postgres && docker volume rm silo_pgdata`); na kolejnych przebiegach lista jest dostępna od razu. Pomiar z 5.11.2026 (Windows, Docker Desktop): lista po 2,0 s od logowania (świeża baza, 54 wiadomości), `message.new` po ok. 0,5 s.
 
+### Test backupu i odtwarzania (DoD Fazy 5)
+
+`scripts/e2e-backup-restore.sh` przechodzi Definition of done Fazy 5 na osobnym stosie `docker-compose.backup-test.yml` (projekt `silo-bt`, obraz produkcyjny `silo-server`, porty `SILO_BT_*`: Postgres `15432`, serwer `18080`, IMAP `11143`, SMTP `12525`, submission `11587`; stos dev nie jest dotykany): seed, initial sync, etykieta użytkownika `Backup-Test` na 2 wątkach, archiwizacja, draft z załącznikiem, wiadomość zaplanowana na +1 h, migawka listy INBOX, `scripts/backup.sh metadata`, usunięcie kontenerów oraz wolumenów `pgdata` i `blobs` (wolumen serwera poczty zostaje: to „zewnętrzny” IMAP, jak w produkcji), `scripts/restore.sh metadata` na pustą bazę, ponowne logowanie i porównanie: identyczne `GET /threads` dla INBOX, etykieta na 2 wątkach, draft (temat, treść, załącznik do pobrania) bez duplikatu, wiadomość w `SCHEDULED`. Snooze i filtry pomija (ich API przychodzi w Fazie 4; import sprawdzają testy serwera).
+
+```sh
+scripts/e2e-backup-restore.sh          # kod wyjścia 0 = PASS, 1 = FAIL; na końcu down -v projektu silo-bt
+scripts/e2e-backup-restore.sh --keep   # zostawia stos silo-bt do oględzin
+```
+
+Pomiar z 5.11.2026 (Windows 11, Docker Desktop, 54 wiadomości): initial sync 1,9 s od logowania; po restore konto `live` po 21,8 s, lista INBOX identyczna z migawką sprzed backupu i etykieta na 2 wątkach po 25,4 s; cały przebieg 95 s (z budową obrazu z cache).
+
 ### Porty
 
 Domyślnie: Postgres `5432`, silo-server `8080`, silo-web `5173`, IMAP `1143`, SMTP `2525`, submission `1587`. Gdy któryś jest zajęty, zmień w `.env` (kopia `.env.example`) odpowiednio `SILO_DEV_PG_PORT`, `SILO_DEV_SERVER_PORT`, `SILO_DEV_WEB_PORT`, `SILO_DEV_IMAP_PORT`, `SILO_DEV_SMTP_PORT`, `SILO_DEV_SUBMISSION_PORT` i uruchom `scripts/dev-up.sh` ponownie. Skrypty działają w Git Bash (Windows) i bash (Linux/macOS).
@@ -117,6 +128,29 @@ Działa (UI `silo-web` 0.3.0 na API `silo-server` 0.4.0), ponad Fazę 3: wyszuki
 Pomiary e2e z 6.11.2026 (Windows 11, Docker Desktop, build produkcyjny przez `vite preview`, docker-mailserver 16): tag ustawiony drugim klientem IMAP (`UID STORE +FLAGS`) → etykieta na wierszu listy po 961–968 ms; etykieta z Silo jako keyword na serwerze w < 3 s; snooze „za minutę” → wiadomość w `Snoozed` na serwerze, poza INBOX, po czasie wybudzenia z powrotem w INBOX bez `\Seen` i na górze listy po 14,1–14,5 s (tick 30 s, próg 90 s); wiadomość zaplanowana ok. 2 min naprzód – przed czasem w żadnym folderze nadawcy ani w INBOX odbiorcy, dostarczona 4,4 s po czasie wysyłki (próg ±30 s); filtr `from:x → pomiń Odebrane + etykieta Y` – nowa wiadomość w Archive z keywordem Y, starsza po „Zastosuj”; wyszukiwanie z operatorami, podpowiedziami, chipami, wyszukiwaniem zaawansowanym i `422`; ustawienia po przeładowaniu, skróty wyłączone blokują `e`; komplet skrótów 6.6 (dwa scenariusze). Regresja Fazy 3 w tym samym przebiegu: `e` → wiersz poza DOM po 22,7 ms, Archive po 10,2 s (okno 10 s), draft w Drafts po 34,0 s, `syncNow` 78 ms, undo send – dostarczenie 0,5 s po oknie, 5000 wątków w 12,5 s z jednym long taskiem 54 ms, axe bez naruszeń.
 
 Nie działa jeszcze: ekran „Dodaj konto” i mapowanie folderów w UI (konto powstaje przy logowaniu; API serwera jest), wiele kont w UI, OAuth2, tryb Gmail – Faza 5; obsługa odbić (bounce/DSN), miniatury i przeglądarka PDF (PDF otwiera się/pobiera w nowej karcie), preset „Jutro po południu” w zaplanowanej wysyłce – później. Do ręcznego sprawdzenia w Thunderbirdzie: lista w [docs/history/FAZA4-NOTES.md](docs/history/FAZA4-NOTES.md) (sekcja „Do sprawdzenia ręcznie”).
+
+## Backup i odtwarzanie
+
+Postgres trzyma dwa rodzaje danych (plan 3.16, 4.1): **cache** poczty (wiadomości, foldery, wątki, etykiety systemowe, bloby mirrora), który synchronizacja odbudowuje z serwera IMAP, oraz **metadane** istniejące tylko w Silo. Skrypty działają na stosie `docker compose` (plik z `SILO_COMPOSE_FILE`, domyślnie `docker-compose.yml`, w dev `SILO_COMPOSE_FILE=docker-compose.dev.yml`; projekt z `COMPOSE_PROJECT_NAME`), także z obrazem produkcyjnym distroless:
+
+```sh
+scripts/backup.sh metadata --out backups/        # domyślny tryb; --user EMAIL: jeden użytkownik
+scripts/backup.sh full --out backups/            # pg_dump -Fc całej bazy + tar.gz wolumenu blobów
+scripts/restore.sh metadata backups/silo-metadata-<ts>.json [--merge]
+scripts/restore.sh full backups/silo-db-<ts>.dump [backups/silo-blobs-<ts>.tar.gz] [--yes]
+```
+
+| Tryb | Zawiera | Odtworzenie |
+|---|---|---|
+| `metadata` | JSON z `silo-server export-metadata`: użytkownicy (hasło, ustawienia, TOTP), konta (konfiguracja i zaszyfrowane hasło skrzynki), etykiety użytkownika z przypisaniami i snooze (po Message-ID), filtry, kontakty, drafty i wiadomości zaplanowane z załącznikami | na uruchomiony stos z pustą bazą: `migrate up` i `import-metadata`; konta robią initial sync, etykiety i snooze wracają w miarę synchronizacji (job `metadata_restore`), wiadomości zaplanowane wracają do kolejki na swój czas |
+| `full` | `pg_dump -Fc` całej bazy (cache i metadane) oraz archiwum katalogu blobów (mirror to cache, ale pełny backup oszczędza resync; bucket przy `SILO_BLOB_BACKEND=s3` archiwizuje się osobno) | zatrzymanie `silo-server`, `pg_restore --clean --if-exists`, podmiana zawartości wolumenu blobów, start serwera; nadpisuje dane, więc pyta o potwierdzenie (`--yes`) |
+
+Każdy plik dostaje `.sha256`, `restore.sh` sprawdza sumę, gdy plik leży obok.
+
+- **Ten sam `SILO_SECRET_KEY`.** Klucza nie ma w backupie (hasła skrzynek i sekrety TOTP są nim zaszyfrowane): przechowuj go osobno i odtwarzaj z tym samym kluczem (albo z nim jako `SILO_SECRET_KEY_PREVIOUS`).
+- **Pusta baza.** `restore.sh metadata` odmawia, gdy w bazie są użytkownicy; `--merge` importuje do istniejących (bez duplikatów). W trybie `imap` nie loguj się przed importem: logowanie zakłada użytkownika.
+- **Oczekujące operacje.** Operacje write-back jeszcze niezapisane na serwerze IMAP (`imap_op`, np. archiwizacja w oknie undo) nie trafiają do backupu metadanych; `backup.sh` czeka do 60 s (`SILO_BACKUP_WAIT`) na pustą kolejkę, potem ostrzega i eksportuje.
+- **Draft przejęty z innego klienta.** Draft otwarty z kopii w Drafts zapisanej przez inny klient (bez `X-Silo-Draft-Id`) wraca jako lokalny draft obok tej kopii (duplikat do usunięcia ręcznie).
 
 ## Stan: Faza 3
 
