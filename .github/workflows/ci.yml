@@ -15,7 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: docker compose config
-        run: docker compose -f docker-compose.dev.yml config -q
+        run: |
+          docker compose -f docker-compose.dev.yml config -q
+          docker compose -f docker-compose.backup-test.yml config -q
 
   lint:
     name: lint yaml and markdown
@@ -25,7 +27,7 @@ jobs:
       - name: yamllint
         run: |
           pip install --quiet yamllint
-          yamllint -d '{extends: relaxed, rules: {line-length: disable}}' docker-compose.dev.yml .github
+          yamllint -d '{extends: relaxed, rules: {line-length: disable}}' docker-compose.dev.yml docker-compose.backup-test.yml .github
       - name: markdownlint
         uses: DavidAnson/markdownlint-cli2-action@v16
         with:

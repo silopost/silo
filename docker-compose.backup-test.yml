@@ -1,0 +1,85 @@
+# Osobny stos do testu backupu i odtwarzania (DoD Fazy 5): scripts/e2e-backup-restore.sh.
+# Wlasny projekt (silo-bt), wlasne wolumeny i porty hosta: nie koliduje ze stosem dev.
+# silo-server w obrazie produkcyjnym (--target prod, distroless, nonroot), bez silo-web.
+# Wymaga repo-rodzenstwa ../silo-server.
+name: silo-bt
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: silo
+      POSTGRES_PASSWORD: silo # tylko test
+      POSTGRES_DB: silo
+    ports: ["${SILO_BT_PG_PORT:-15432}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "silo", "-d", "silo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Serwer poczty jak w dev (ta sama konfiguracja i konta dev1-3@silo.test), wlasny wolumen.
+  # W tescie odgrywa role zewnetrznego serwera IMAP: jego wolumen przezywa "utrate" Silo.
+  mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:16
+    hostname: mail.silo.test
+    environment:
+      ENABLE_RSPAMD: "0"
+      ENABLE_SPAMASSASSIN: "0"
+      ENABLE_CLAMAV: "0"
+      ENABLE_AMAVIS: "0"
+      ENABLE_OPENDKIM: "0"
+      ENABLE_OPENDMARC: "0"
+      ENABLE_POLICYD_SPF: "0"
+      ENABLE_FAIL2BAN: "0"
+      PERMIT_DOCKER: network
+      SSL_TYPE: ""
+    volumes:
+      - ./dev/dms/config:/tmp/docker-mailserver
+      - dms-mail:/var/mail
+    ports:
+      - "${SILO_BT_SMTP_PORT:-12525}:25"
+      - "${SILO_BT_IMAP_PORT:-11143}:143"
+      - "${SILO_BT_SUBMISSION_PORT:-11587}:587"
+
+  # Obraz prod dziala jako nonroot (65532): nowy wolumen blobow trzeba mu oddac na wlasnosc.
+  blobs-init:
+    image: alpine:3.22
+    command: ["chown", "-R", "65532:65532", "/data/blobs"]
+    volumes: [blobs:/data/blobs]
+
+  silo-server:
+    build:
+      context: ../silo-server
+      target: prod
+    volumes: [blobs:/data/blobs]
+    environment:
+      SILO_HTTP_ADDR: ":8080"
+      SILO_LOG_FORMAT: text
+      SILO_LOG_LEVEL: info
+      SILO_DATABASE_URL: postgres://silo:silo@postgres:5432/silo?sslmode=disable
+      SILO_PUBLIC_URL: http://localhost:${SILO_BT_SERVER_PORT:-18080}
+      SILO_SECRET_KEY: ZGV2LW9ubHktZGV2LW9ubHktZGV2LW9ubHktZGV2MzI= # 32 B base64, WYLACZNIE test
+      SILO_AUTH_MODE: imap
+      SILO_DEFAULT_IMAP_HOST: mailserver
+      SILO_DEFAULT_IMAP_PORT: "143"
+      SILO_DEFAULT_IMAP_TLS: none
+      SILO_DEFAULT_SMTP_HOST: mailserver
+      SILO_DEFAULT_SMTP_PORT: "587"
+      SILO_DEFAULT_SMTP_TLS: none
+      SILO_ALLOW_INSECURE_TRANSPORT: "true"
+      SILO_UNDO_WINDOW: 1s # operacje trafiaja na serwer IMAP od razu, backup ich nie gubi
+    ports: ["${SILO_BT_SERVER_PORT:-18080}:8080"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailserver:
+        condition: service_started
+      blobs-init:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata: {}
+  blobs: {}
+  dms-mail: {}
