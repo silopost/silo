@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    name: validate compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config
+        run: docker compose -f docker-compose.dev.yml config -q
+
+  lint:
+    name: lint yaml and markdown
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: yamllint
+        run: |
+          pip install --quiet yamllint
+          yamllint -d '{extends: relaxed, rules: {line-length: disable}}' docker-compose.dev.yml .github
+      - name: markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: |
+            README.md
+            CONTRIBUTING.md
+            docs/**/*.md
+          config: .markdownlint.yaml
