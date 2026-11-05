@@ -29,6 +29,7 @@ docker compose -f docker-compose.dev.yml up
 ```
 
 Repozytoria muszą być rodzeństwem (`silopost/{silo,silo-server,silo-web}`) – compose buduje z `../silo-server` i `../silo-web`.
+Gdy porty są zajęte, skopiuj `.env.example` do `.env` i zmień `SILO_DEV_*_PORT`.
 
 Weryfikacja:
 
