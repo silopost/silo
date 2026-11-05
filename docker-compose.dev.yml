@@ -1,0 +1,74 @@
+# Szkielet dev (Faza 0). Wymaga repo-rodzenstwa: ../silo-server i ../silo-web.
+# Szkic docelowy: ARCHITECTURE_AND_PLAN.md, sekcja 2.1.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: silo
+      POSTGRES_PASSWORD: silo # tylko dev
+      POSTGRES_DB: silo
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "silo", "-d", "silo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Faza 1: docelowy serwer IMAP/SMTP (docker-mailserver). Wymaga kont testowych
+  # (scripts/dev-up.sh) i konfiguracji dev/dms/config - nie uruchamiac w Fazie 0.
+  # mailserver:
+  #   image: ghcr.io/docker-mailserver/docker-mailserver:latest
+  #   hostname: mail.silo.test
+  #   environment:
+  #     ENABLE_RSPAMD: "0"
+  #     ENABLE_SPAMASSASSIN: "0"
+  #     ENABLE_CLAMAV: "0"
+  #     ENABLE_AMAVIS: "0"
+  #     ENABLE_OPENDKIM: "0"
+  #     ENABLE_OPENDMARC: "0"
+  #     ENABLE_POLICYD_SPF: "0"
+  #     ENABLE_FAIL2BAN: "0"
+  #     PERMIT_DOCKER: network
+  #     SSL_TYPE: ""
+  #   volumes:
+  #     - ./dev/dms/config:/tmp/docker-mailserver
+  #     - dms-mail:/var/mail
+  #   ports: ["2525:25", "1143:143", "1587:587"]
+
+  silo-server:
+    build:
+      context: ../silo-server
+      target: dev
+    command: air -c .air.toml
+    volumes:
+      - ../silo-server:/src
+      - blobs:/data/blobs
+    environment:
+      SILO_HTTP_ADDR: ":8080"
+      SILO_LOG_FORMAT: text
+      SILO_LOG_LEVEL: debug
+      # Przygotowanie pod kolejne fazy (serwer w Fazie 0 moze go jeszcze nie uzywac).
+      SILO_DATABASE_URL: postgres://silo:silo@postgres:5432/silo?sslmode=disable
+    ports: ["8080:8080"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  silo-web:
+    image: node:22
+    working_dir: /src
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ../silo-web:/src
+      # node_modules w wolumenie kontenera: nie mieszamy modulow hosta (Windows) z Linuksem
+      - web_node_modules:/src/node_modules
+    environment:
+      VITE_API_PROXY: http://silo-server:8080
+    ports: ["5173:5173"]
+
+volumes:
+  pgdata: {}
+  blobs: {}
+  web_node_modules: {}
+  # dms-mail: {}  # Faza 1
