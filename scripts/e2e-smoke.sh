@@ -33,6 +33,7 @@ COMPOSE=(docker compose -f docker-compose.dev.yml)
 
 tmp="$(mktemp -d)"
 sse_pid=""
+# shellcheck disable=SC2329 # wywolywana przez trap
 cleanup() {
   [ -n "$sse_pid" ] && kill "$sse_pid" 2> /dev/null || true
   rm -rf "$tmp"
