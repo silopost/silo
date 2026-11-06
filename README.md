@@ -5,6 +5,8 @@ Self-hosted **klient webowy poczty** (IMAP/SMTP) z UX współczesnego Gmaila: w�
 Silo **nie jest serwerem pocztowym**. Łączy się z istniejącym serwerem (docker-mailserver, Dovecot, Gmail IMAP, Office 365 itd.) przez IMAP i SMTP submission – tak jak Roundcube czy Thunderbird. Serwer IMAP pozostaje źródłem prawdy dla poczty. Szczegóły: [sekcja 1 planu](ARCHITECTURE_AND_PLAN.md#1-cel-i-zasady) i [ADR 0005](docs/adr/0005-imap-source-of-truth.md).
 
 > Status: Faza 4 zamknięta – klient webowy z układem Gmaila: wyszukiwanie ze składnią Gmaila, snooze, zaplanowana wysyłka, filtry, etykiety jako IMAP keywords, ustawienia, obrazy inline i miniatury, pełna tabela skrótów. Brak UI „Dodaj konto” i mapowania folderów, OAuth2 i wielu kont w UI (Faza 5); szczegóły w sekcji [Stan: Faza 4](#stan-faza-4).
+>
+> Aplikacja mobilna `silo-mobile` 0.1.0 (Android, React Native/Expo – [ADR 0010](docs/adr/0010-react-native-for-silo-mobile.md)): parytet poczty z `silo-web` 0.3.0, niewydana i **niesprawdzona na urządzeniu** (tylko testy, bundel i smoke-test API); szczegóły w sekcji [Stan: silo-mobile 0.1.0](#stan-silo-mobile-010).
 
 ## Repozytoria
 
@@ -13,6 +15,7 @@ Silo **nie jest serwerem pocztowym**. Łączy się z istniejącym serwerem (dock
 | `silo` (to repo) | MIT | Orkiestracja (compose, Caddy, skrypty), dokumentacja, ADR, e2e | tag + compose z przypiętymi obrazami |
 | `silo-server` | AGPL-3.0 | Backend Go: API, SSE, sync IMAP, SMTP, workery | `ghcr.io/silopost/silo-server` |
 | `silo-web` | AGPL-3.0 | SPA React/TS, konsument OpenAPI | `ghcr.io/silopost/silo-web` |
+| `silo-mobile` | AGPL-3.0 | Aplikacja mobilna React Native/Expo (Android, iOS docelowo) – cienki klient tego samego OpenAPI z logowaniem bearer; [README](https://github.com/silopost/silo-mobile#readme) | bundel `expo export` w CI; APK przez `expo prebuild` + Gradle (dystrybucja – Faza 6) |
 
 ## Szybki start (dev)
 
@@ -31,6 +34,8 @@ scripts/dev-up.sh
 `scripts/dev-up.sh` sprawdza repozytoria rodzeństwa, tworzy `.env` z `.env.example` (gdy go brak), uruchamia `docker compose -f docker-compose.dev.yml up -d --build`, czeka na serwer pocztowy, zakłada brakujące konta testowe i wypisuje adresy usług. Jest idempotentny. Można podać listę usług, np. `scripts/dev-up.sh postgres mailserver` (sam serwer poczty, bez budowania `silo-server`/`silo-web`).
 
 Repozytoria muszą być rodzeństwem (`silopost/{silo,silo-server,silo-web}`) – compose buduje z `../silo-server` i `../silo-web`.
+
+`silo-mobile` nie jest częścią compose; do pracy nad aplikacją mobilną sklonuj je obok (`git clone https://github.com/silopost/silo-mobile.git`) – patrz [Stan: silo-mobile 0.1.0](#stan-silo-mobile-010).
 
 Weryfikacja:
 
@@ -85,6 +90,26 @@ Bez `jq` (parsowanie `grep`/`sed`), potrzebny tylko `curl` i `docker compose`. A
 
 Domyślnie: Postgres `5432`, silo-server `8080`, silo-web `5173`, IMAP `1143`, SMTP `2525`, submission `1587`. Gdy któryś jest zajęty, zmień w `.env` (kopia `.env.example`) odpowiednio `SILO_DEV_PG_PORT`, `SILO_DEV_SERVER_PORT`, `SILO_DEV_WEB_PORT`, `SILO_DEV_IMAP_PORT`, `SILO_DEV_SMTP_PORT`, `SILO_DEV_SUBMISSION_PORT` i uruchom `scripts/dev-up.sh` ponownie. Skrypty działają w Git Bash (Windows) i bash (Linux/macOS).
 
+## Stan: silo-mobile 0.1.0
+
+Działa (aplikacja `silo-mobile` 0.1.0, niewydana, na API `silo-server` 0.4.0; [ADR 0010](docs/adr/0010-react-native-for-silo-mobile.md), plan – Faza 4m): parytet funkcji pocztowych z `silo-web` 0.3.0 i aplikacją Gmail na Androida – logowanie bearer z tokenem w Keystore ([ADR 0007](docs/adr/0007-bearer-tokens-for-native-clients.md)), szuflada z etykietami, wiele kont z przełącznikiem, lista wątków ze swipe i zaznaczaniem, akcje z „Cofnij”, widok wątku (HTML w WebView, obrazy `cid:`, załączniki, miniatury), compose (TipTap – drafty przechodzą między telefonem a przeglądarką, załączniki, obrazy w treści, undo send, zaplanowana wysyłka), wyszukiwanie z podpowiedziami i chipami, snooze, ustawienia (urządzenie + `/settings`), filtry, zarządzanie etykietami, sesje, zdarzenia na żywo (SSE przez strumieniowy `fetch`, fallback na polling, tylko na pierwszym planie). Z `silo-server` 0.3.0 działa zakres Fazy 3 – funkcje 0.4.0 są ukryte po `serverVersion` ([macierz kompatybilności](docs/compat-matrix.md#silo-mobile)).
+
+Sprawdzone 6.11.2026 bez urządzenia: typecheck, lint, format, 405 testów (jest-expo + msw), bundel Hermes Androida (`expo export`, 8,4 MB), schemat zgodny z `v0.4.0`, smoke-test tylko-odczyt warstwy klienta na dev compose 14/14 (`npm run smoke:api`).
+
+Nie działa jeszcze / niesprawdzone: aplikacja **nie była uruchamiana na urządzeniu ani emulatorze** (gesty, klawiatura edytora, WebView, pickery), iOS w ogóle, e2e z mutacjami i SSE na żywym API; brak powiadomień push, offline cache, podpisanego APK/AAB i F-Droid – Faza 6. Odstępstwa od parytetu: README `silo-mobile`, sekcja „Odstępstwa od parytetu”; luki kontraktu serwera: plan, Faza 6, i [docs/history/SILO-MOBILE-NOTES.md](docs/history/SILO-MOBILE-NOTES.md).
+
+Jak uruchomić (szczegóły w README `silo-mobile`, sekcja „Uruchomienie”):
+
+```sh
+scripts/dev-up.sh postgres mailserver silo-server   # API dev; port z SILO_DEV_SERVER_PORT
+scripts/seed-mail.sh --all                           # przed pierwszym logowaniem
+cd ../silo-mobile && npm ci
+npx expo start          # Expo Go na telefonie: zeskanuj kod QR (bez Android SDK)
+npx expo run:android    # development build na emulatorze/urządzeniu (wymaga Android SDK)
+```
+
+Adres instancji na ekranie logowania: w emulatorze `http://10.0.2.2:<port>`, na telefonie adres LAN komputera (`localhost` to sam telefon); cleartext HTTP działa tylko w Expo Go i buildzie debug. Konto testowe np. `dev1@silo.test` / `devpass1`.
+
 ## Stan: Faza 4
 
 Działa (UI `silo-web` 0.3.0 na API `silo-server` 0.4.0), ponad Fazę 3: wyszukiwanie ze składnią Gmaila parsowane na serwerze (`from:`, `to:`, `subject:`, `has:attachment`, `is:`, `label:`, `in:`, daty, rozmiary, `OR`, `-`, nawiasy; tokenizer w aplikacji – [ADR 0008](docs/adr/0008-search-tokenizer-in-app.md)) z podpowiedziami (historia, kontakty, etykiety, operatory), chipami, wyszukiwaniem zaawansowanym i banerem indeksowania; snooze (folder `Snoozed` na serwerze, presety w strefie użytkownika, wybudzanie co 30 s, nowa wiadomość budzi wątek, lista Odłożone); zaplanowana wysyłka (lista Zaplanowane, wiadomość nie istnieje na serwerze przed czasem); filtry (CRUD, „Utwórz filtr z wyszukiwania”, nowe wiadomości przy ingest, „Zastosuj do istniejących”, przekazywanie); etykiety użytkownika jako IMAP keywords (drzewo, kolory, zagnieżdżanie, stan per folder `mirrored`/`local_only`/`partial`, limit 26 słów kluczowych maildir liczony przez Silo – [ADR 0009](docs/adr/0009-keyword-state-per-folder.md)); odbudowa cache konta (`resync rebuild`, `silo-server rebuild-cache`); ustawienia (`GET/PATCH /settings`: gęstość, okres undo send, strefa, podpis, skróty, powiadomienia desktop); obrazy inline (`cid:`) w compose, miniatury obrazów, przekazanie z załącznikami oryginału; komplet skrótów z planu 6.6 (`g l`, `g 1..9`, `n p l v b`, `Ctrl+Enter`). Notatki administratora (limit keywordów, `rebuild-cache`, folder `Snoozed`, reindeks po upgrade): [docs/admin](docs/admin/README.md).
@@ -123,9 +148,9 @@ Nie działa jeszcze: interfejs użytkownika (`silo-web` ma tylko szkielet i klie
 - [docs/adr/](docs/adr/README.md) – rekordy decyzji architektonicznych
 - [docs/compat-matrix.md](docs/compat-matrix.md) – macierz kompatybilności
 - [docs/admin/](docs/admin/README.md) – notatki dla administratora instancji
-- [docs/history/](docs/history/FAZA4-NOTES.md) – archiwum notatek koordynatora faz
+- [docs/history/](docs/history/FAZA4-NOTES.md) – archiwum notatek koordynatora faz ([Faza 4](docs/history/FAZA4-NOTES.md), [silo-mobile](docs/history/SILO-MOBILE-NOTES.md))
 - [CONTRIBUTING.md](CONTRIBUTING.md) – konwencje i workflow dla wszystkich trzech repo
 
 ## Licencja
 
-MIT (to repo) – zob. [LICENSE](LICENSE). `silo-server` i `silo-web` są na AGPL-3.0.
+MIT (to repo) – zob. [LICENSE](LICENSE). `silo-server`, `silo-web` i `silo-mobile` są na AGPL-3.0.

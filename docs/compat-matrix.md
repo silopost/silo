@@ -2,16 +2,24 @@
 
 Szkielet; wypełniany przed każdym release. Kontekst: [plan 2.1](../ARCHITECTURE_AND_PLAN.md#21-struktura-silo) i [2.4](../ARCHITECTURE_AND_PLAN.md#24-wersjonowanie-i-kontrakt).
 
-## 1. Wersje `silo-server` / `silo-web`
+## 1. Wersje `silo-server` / `silo-web` / `silo-mobile`
 
-Przed 1.0 zmiany łamiące kontrakt API są opisywane tutaj.
+Przed 1.0 zmiany łamiące kontrakt API są opisywane tutaj. `silo-mobile` nie jest częścią dystrybucji `silo` (aplikacja na telefon, nie obraz) – kolumna mówi, która wersja aplikacji jest zbudowana na kontrakcie danego wydania serwera; zgodność z innymi wersjami serwera – [niżej](#silo-mobile).
 
-| silo | silo-server | silo-web | Uwagi |
-|---|---|---|---|
-| 0.4.0 | 0.4.0 | 0.3.0 | kontrakt API Fazy 4 (addytywny wobec 0.3.0): wyszukiwanie ze składnią Gmaila (`GET /threads?q=` z `indexing`/`approximate`/`resultSizeEstimate`, `422 invalid_query`, `GET /search/suggest`, `DELETE /search/history`), snooze (`POST`/`DELETE /threads/{id}/snooze`, `GET /snooze/presets`, rola folderu `snoozed`), schedule send (`Thread.scheduledAt`/`outboundId`), filtry (`/filters` CRUD, `POST /filters/{id}/apply`, `filter.applied`), `GET/PATCH /settings` (`desktopNotifications`, `updatedAt`, `settings.updated`; `SessionInfo.settings` zyskało te pola), uploady `inline` z `cid` i miniatury (`GET /attachments/{id}/thumbnail`, `thumbnail`/`cid`/`inline` przy załącznikach, `415 thumbnail_unsupported`), `Draft.warnings` (forward z załącznikami oryginału), `Thread.snoozedUntil`, etykiety `keywordState` `mirrored`/`local_only`/`partial` z `localOnlyFolders`, `PATCH /labels/{id}` z `parentId` (`422 invalid_parent`), `POST /accounts/{id}/resync {mode: rebuild}` (`409 rebuild_blocked`). Migracje `000006`–`000009` addytywne; reindeks wyszukiwania w tle po upgrade (`docs/admin`). `silo-web` 0.2.0 działa z `silo-server` 0.4.0; `silo-web` 0.3.0 wymaga `silo-server` ≥ 0.4.0 |
-| 0.3.0 | 0.3.0 | 0.2.0 | kontrakt API Fazy 3 (addytywny wobec 0.2.0, poza poprawkami schematu na końcu wiersza): logowanie bearer dla klientów natywnych (`POST /session` z `client`, `Authorization: Bearer`, ADR 0007), `/operations/{id}/undo`, `/uploads`, drafty (`/drafts`, `PUT` z `version` i `syncNow`, jedna kopia w Drafts), wysyłka (`/drafts/{id}/send`, `/outbound/{id}/cancel` – undo send, `SCHEDULED`/`SENT`, APPEND do Sent, `\Answered`), `/contacts/autocomplete`, `Account.position`, `Message.draftId`/`Thread.draftId`, `Draft.lastSend`, `meta.maxAttachmentBytes`, pola problemów (`limit`/`size`, `currentVersion`/`current`, `address`/`field`), `operation.failed.kind`, `outbound.status` z `draftId`. Schemat: `Draft.lastSend` i `Message.folder` mogą być `null`, `Message.replyTo` jest pomijane bez nagłówka Reply-To (wcześniej błędnie wymagane). `silo-web` 0.2.0 wymaga `silo-server` ≥ 0.3.0 |
-| 0.2.0 | 0.2.0 | 0.1.0 | kontrakt API Fazy 2: session, accounts, labels, threads, messages, events; przed 1.0 breaking changes dopuszczalne |
-| edge | edge | edge | obrazy `:edge`, bez gwarancji kompatybilności |
+| silo | silo-server | silo-web | silo-mobile | Uwagi |
+|---|---|---|---|---|
+| 0.4.0 | 0.4.0 | 0.3.0 | 0.1.0 | kontrakt API Fazy 4 (addytywny wobec 0.3.0): wyszukiwanie ze składnią Gmaila (`GET /threads?q=` z `indexing`/`approximate`/`resultSizeEstimate`, `422 invalid_query`, `GET /search/suggest`, `DELETE /search/history`), snooze (`POST`/`DELETE /threads/{id}/snooze`, `GET /snooze/presets`, rola folderu `snoozed`), schedule send (`Thread.scheduledAt`/`outboundId`), filtry (`/filters` CRUD, `POST /filters/{id}/apply`, `filter.applied`), `GET/PATCH /settings` (`desktopNotifications`, `updatedAt`, `settings.updated`; `SessionInfo.settings` zyskało te pola), uploady `inline` z `cid` i miniatury (`GET /attachments/{id}/thumbnail`, `thumbnail`/`cid`/`inline` przy załącznikach, `415 thumbnail_unsupported`), `Draft.warnings` (forward z załącznikami oryginału), `Thread.snoozedUntil`, etykiety `keywordState` `mirrored`/`local_only`/`partial` z `localOnlyFolders`, `PATCH /labels/{id}` z `parentId` (`422 invalid_parent`), `POST /accounts/{id}/resync {mode: rebuild}` (`409 rebuild_blocked`). Migracje `000006`–`000009` addytywne; reindeks wyszukiwania w tle po upgrade (`docs/admin`). `silo-web` 0.2.0 działa z `silo-server` 0.4.0; `silo-web` 0.3.0 wymaga `silo-server` ≥ 0.4.0 |
+| 0.3.0 | 0.3.0 | 0.2.0 | 0.1.0 (zakres Fazy 3) | kontrakt API Fazy 3 (addytywny wobec 0.2.0, poza poprawkami schematu na końcu wiersza): logowanie bearer dla klientów natywnych (`POST /session` z `client`, `Authorization: Bearer`, ADR 0007), `/operations/{id}/undo`, `/uploads`, drafty (`/drafts`, `PUT` z `version` i `syncNow`, jedna kopia w Drafts), wysyłka (`/drafts/{id}/send`, `/outbound/{id}/cancel` – undo send, `SCHEDULED`/`SENT`, APPEND do Sent, `\Answered`), `/contacts/autocomplete`, `Account.position`, `Message.draftId`/`Thread.draftId`, `Draft.lastSend`, `meta.maxAttachmentBytes`, pola problemów (`limit`/`size`, `currentVersion`/`current`, `address`/`field`), `operation.failed.kind`, `outbound.status` z `draftId`. Schemat: `Draft.lastSend` i `Message.folder` mogą być `null`, `Message.replyTo` jest pomijane bez nagłówka Reply-To (wcześniej błędnie wymagane). `silo-web` 0.2.0 wymaga `silo-server` ≥ 0.3.0 |
+| 0.2.0 | 0.2.0 | 0.1.0 | – | kontrakt API Fazy 2: session, accounts, labels, threads, messages, events; przed 1.0 breaking changes dopuszczalne |
+| edge | edge | edge | `main` | obrazy `:edge`, bez gwarancji kompatybilności |
+
+### `silo-mobile`
+
+| silo-mobile | silo-server | Uwagi |
+|---|---|---|
+| 0.1.0 (niewydane) | 0.4.0 | pełny zakres: schemat wygenerowany z OpenAPI `v0.4.0` (`silo.serverRef`), parytet poczty z `silo-web` 0.3.0 (Fazy 3–4), [ADR 0010](adr/0010-react-native-for-silo-mobile.md). Funkcje kontraktu 0.4.0 (wyszukiwanie z operatorami i podpowiedziami, snooze, zaplanowana wysyłka, `/settings`, filtry, zarządzanie etykietami, miniatury, obrazy w treści) bramkowane po `Meta.serverVersion` (`src/lib/features.ts`), bo `/meta` nie ma flag funkcji; wersja nieparsowalna (`dev`) = najnowsza. Sprawdzone testami (405), bundlem Androida i smoke-testem tylko-odczyt na dev compose (14/14), nie na urządzeniu |
+| 0.1.0 (niewydane) | 0.3.0 | zakres Fazy 3: logowanie bearer, lista, wątek, akcje i „Cofnij”, compose i undo send, załączniki, konta, sesje, zdarzenia; ustawienia tylko na urządzeniu, wyszukiwanie tylko tekstu; funkcje 0.4.0 ukryte |
+| – | ≤ 0.2.0 | nieobsługiwane (brak logowania bearer, ADR 0007) |
 
 ## 2. Serwery pocztowe IMAP/SMTP
 
@@ -56,4 +64,3 @@ Sprawdzone testami integracyjnymi `silo-server` na `dovecot/dovecot:2.4.5` (test
 - **Odbudowa cache** (`resync rebuild` / `rebuild-cache`): etykiety użytkownika odtworzone z keywordów (porównanie zbiorów `(Message-ID, etykieta)` przed i po, także bez wierszy `labels`), ten sam podział na wątki, snooze i etykiety lokalne przeniesione; 33 wiadomości w ok. 2 s.
 - **Schedule send:** wiadomość zaplanowana nie istnieje na serwerze (żaden folder nadawcy, INBOX odbiorcy) przed czasem; dostarczenie po czasie wysyłki (testy serwera: ok. 0,1 s po `sendAt`).
 - **Filtry:** nowa wiadomość pasująca do `from:x` → `MOVE` do Archive + keyword etykiety; „Zastosuj” przenosi starsze.
-
