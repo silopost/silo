@@ -13,3 +13,4 @@ Format: [0000-template.md](0000-template.md). Zasady dodawania ADR: [CONTRIBUTIN
 | [0007](0007-bearer-tokens-for-native-clients.md) | Opaque bearer tokens dla klientów natywnych | Przyjęty |
 | [0008](0008-search-tokenizer-in-app.md) | Tokenizer wyszukiwania w aplikacji zamiast `to_tsvector(unaccent)` | Przyjęty |
 | [0009](0009-keyword-state-per-folder.md) | Stan keywordu etykiety per folder i limit liczony z `PERMANENTFLAGS` | Przyjęty |
+| [0010](0010-react-native-for-silo-mobile.md) | React Native (Expo) dla `silo-mobile` | Przyjęty |
