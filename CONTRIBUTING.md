@@ -48,6 +48,7 @@ Zmiana decyzji architektonicznej (lub odstępstwo od Gmail-parity) wymaga ADR w 
 2. Wypełnij Status, Kontekst, Decyzja, Konsekwencje, Alternatywy.
 3. Dodaj wpis do [`docs/adr/README.md`](docs/adr/README.md).
 4. Zmiana wcześniejszej decyzji = nowy ADR ze statusem „Zastępuje NNNN”; stary dostaje „Zastąpiony przez NNNN”.
+5. Decyzja dotycząca bezpieczeństwa (uwierzytelnianie, sekrety, ruch sieciowy, treść wiadomości) aktualizuje też [docs/threat-model.md](docs/threat-model.md).
 
 ## Dev
 

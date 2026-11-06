@@ -4,7 +4,7 @@ Self-hosted **klient webowy poczty** (IMAP/SMTP) z UX współczesnego Gmaila: w�
 
 Silo **nie jest serwerem pocztowym**. Łączy się z istniejącym serwerem (docker-mailserver, Dovecot, Gmail IMAP, Office 365 itd.) przez IMAP i SMTP submission – tak jak Roundcube czy Thunderbird. Serwer IMAP pozostaje źródłem prawdy dla poczty. Szczegóły: [sekcja 1 planu](ARCHITECTURE_AND_PLAN.md#1-cel-i-zasady) i [ADR 0005](docs/adr/0005-imap-source-of-truth.md).
 
-> Status: Faza 4 zamknięta – klient webowy z układem Gmaila: wyszukiwanie ze składnią Gmaila, snooze, zaplanowana wysyłka, filtry, etykiety jako IMAP keywords, ustawienia, obrazy inline i miniatury, pełna tabela skrótów. Brak UI „Dodaj konto” i mapowania folderów, OAuth2 i wielu kont w UI (Faza 5); szczegóły w sekcji [Stan: Faza 4](#stan-faza-4).
+> Status: Faza 5 (zakres 1.0) zamknięta – wiele kont z „Dodaj konto” i autokonfiguracją, OAuth2 dla Gmaila i Microsoft 365, tryb `local` z TOTP i panelem admina, backup i odtwarzanie, S3Store, hardening, PWA, stos produkcyjny z Caddy i dokumentacja administratora. Do 1.1 odłożone: tryb `provider=gmail` (X-GM), ManageSieve, OAuth2 dla klientów natywnych, `GET /changes`/`ETag`; Gmail i Microsoft 365 nieprzetestowane na żywych kontach. Szczegóły w sekcji [Stan: Faza 5](#stan-faza-5).
 >
 > Aplikacja mobilna `silo-mobile` 0.1.0 (Android, React Native/Expo – [ADR 0010](docs/adr/0010-react-native-for-silo-mobile.md)): parytet poczty z `silo-web` 0.3.0, niewydana i **niesprawdzona na urządzeniu** (tylko testy, bundel i smoke-test API); szczegóły w sekcji [Stan: silo-mobile 0.1.0](#stan-silo-mobile-010).
 
@@ -16,6 +16,20 @@ Silo **nie jest serwerem pocztowym**. Łączy się z istniejącym serwerem (dock
 | `silo-server` | AGPL-3.0 | Backend Go: API, SSE, sync IMAP, SMTP, workery | `ghcr.io/silopost/silo-server` |
 | `silo-web` | AGPL-3.0 | SPA React/TS, konsument OpenAPI | `ghcr.io/silopost/silo-web` |
 | `silo-mobile` | AGPL-3.0 | Aplikacja mobilna React Native/Expo (Android, iOS docelowo) – cienki klient tego samego OpenAPI z logowaniem bearer; [README](https://github.com/silopost/silo-mobile#readme) | bundel `expo export` w CI; APK przez `expo prebuild` + Gradle (dystrybucja – Faza 6) |
+
+## Szybki start (prod)
+
+Wymagane: host Linux z Dockerem i Compose v2 (≥ 2.24), domena wskazująca na host, porty 80/443. Stos [`docker-compose.yml`](docker-compose.yml): Caddy (TLS ACME, [`Caddyfile`](Caddyfile)), Postgres 17, `silo-server` i `silo-web` z `ghcr.io/silopost/*` (tagi `SILO_SERVER_TAG`/`SILO_WEB_TAG`); serwer poczty jest zewnętrzny.
+
+```sh
+git clone --branch v0.5.0 https://github.com/silopost/silo.git && cd silo
+cp .env.example .env    # sekcja "Produkcja": SILO_DOMAIN, SILO_SECRET_KEY (openssl rand -base64 32),
+                        # SILO_POSTGRES_PASSWORD (openssl rand -hex 24), SILO_DEFAULT_IMAP_HOST
+docker compose up -d
+curl -fsS https://poczta.example.com/healthz
+```
+
+Pełna instrukcja (serwer domyślny z docker-mailserver, tryb `local` i pierwszy admin, hasła aplikacji, upgrade, backup, S3, fail2ban, OAuth2): [docs/admin](docs/admin/README.md). Kopię `SILO_SECRET_KEY` trzymaj osobno od backupów bazy.
 
 ## Szybki start (dev)
 
@@ -88,18 +102,34 @@ Bez `jq` (parsowanie `grep`/`sed`), potrzebny tylko `curl` i `docker compose`. A
 
 ### Test backupu i odtwarzania (DoD Fazy 5)
 
-`scripts/e2e-backup-restore.sh` przechodzi Definition of done Fazy 5 na osobnym stosie `docker-compose.backup-test.yml` (projekt `silo-bt`, obraz produkcyjny `silo-server`, porty `SILO_BT_*`: Postgres `15432`, serwer `18080`, IMAP `11143`, SMTP `12525`, submission `11587`; stos dev nie jest dotykany): seed, initial sync, etykieta użytkownika `Backup-Test` na 2 wątkach, archiwizacja, draft z załącznikiem, wiadomość zaplanowana na +1 h, migawka listy INBOX, `scripts/backup.sh metadata`, usunięcie kontenerów oraz wolumenów `pgdata` i `blobs` (wolumen serwera poczty zostaje: to „zewnętrzny” IMAP, jak w produkcji), `scripts/restore.sh metadata` na pustą bazę, ponowne logowanie i porównanie: identyczne `GET /threads` dla INBOX, etykieta na 2 wątkach, draft (temat, treść, załącznik do pobrania) bez duplikatu, wiadomość w `SCHEDULED`. Snooze i filtry pomija (ich API przychodzi w Fazie 4; import sprawdzają testy serwera).
+`scripts/e2e-backup-restore.sh` przechodzi Definition of done Fazy 5 na osobnym stosie `docker-compose.backup-test.yml` (projekt `silo-bt`, obraz produkcyjny `silo-server`, porty `SILO_BT_*`: Postgres `15432`, serwer `18080`, IMAP `11143`, SMTP `12525`, submission `11587`; stos dev nie jest dotykany): seed, initial sync, etykieta użytkownika `Backup-Test` na 2 wątkach, archiwizacja, draft z załącznikiem, wiadomość zaplanowana na +1 h, snooze wątku na +1 h, filtr z etykietą `Backup-Test`, migawka listy INBOX, `scripts/backup.sh metadata`, usunięcie kontenerów oraz wolumenów `pgdata` i `blobs` (wolumen serwera poczty zostaje: to „zewnętrzny” IMAP, jak w produkcji), `scripts/restore.sh metadata` na pustą bazę, ponowne logowanie i porównanie: identyczne `GET /threads` dla INBOX, etykieta na 2 wątkach, draft (temat, treść, załącznik do pobrania) bez duplikatu, wiadomość w `SCHEDULED`, wątek w `SNOOZED` z tym samym czasem wybudzenia, filtr z etykietą wskazaną po nazwie. Procedura dla administratora: [docs/admin/backup.md](docs/admin/backup.md).
 
 ```sh
 scripts/e2e-backup-restore.sh          # kod wyjścia 0 = PASS, 1 = FAIL; na końcu down -v projektu silo-bt
 scripts/e2e-backup-restore.sh --keep   # zostawia stos silo-bt do oględzin
 ```
 
-Pomiar z 5.11.2026 (Windows 11, Docker Desktop, 54 wiadomości): initial sync 1,9 s od logowania; po restore konto `live` po 21,8 s, lista INBOX identyczna z migawką sprzed backupu i etykieta na 2 wątkach po 25,4 s; cały przebieg 95 s (z budową obrazu z cache).
+Pomiar z 6.11.2026 (Windows 11, Docker Desktop, 54 wiadomości, `silo-server` 0.5.0): initial sync 1,9 s od logowania; po restore konto `live` po 5,7 s, lista INBOX identyczna z migawką sprzed backupu, etykieta na 2 wątkach i snooze odtworzone po 70,7 s (snooze odtwarza job `metadata_restore`, który ponawia co minutę; bez snooze – 25,4 s, 5.11.2026); cały przebieg 156 s (z budową obrazu).
 
 ### Porty
 
 Domyślnie: Postgres `5432`, silo-server `8080`, silo-web `5173`, IMAP `1143`, SMTP `2525`, submission `1587`. Gdy któryś jest zajęty, zmień w `.env` (kopia `.env.example`) odpowiednio `SILO_DEV_PG_PORT`, `SILO_DEV_SERVER_PORT`, `SILO_DEV_WEB_PORT`, `SILO_DEV_IMAP_PORT`, `SILO_DEV_SMTP_PORT`, `SILO_DEV_SUBMISSION_PORT` i uruchom `scripts/dev-up.sh` ponownie. Skrypty działają w Git Bash (Windows) i bash (Linux/macOS).
+
+## Stan: Faza 5
+
+Działa (UI `silo-web` 0.4.0 na API `silo-server` 0.5.0, dystrybucja `silo` 0.5.0), ponad Fazę 4:
+
+- **Wiele kont** u jednego użytkownika: przełącznik kont z licznikami, `/u/<n>`, `g 1..9`, pole „Od” (draft przenosi się na wybrane konto), „Dodaj konto” z autokonfiguracją (ISPDB, autoconfig, SRV, zgadywanie z weryfikacją TLS) i testem połączenia; **izolacja użytkowników** sprawdzona testem każdego endpointu i SSE w obu kierunkach (cudze ID → `404`).
+- **Tryb `local`** ([ADR 0011](docs/adr/0011-local-auth-mode-and-totp.md)): użytkownicy Silo z hasłem argon2id zakładani przez admina (`silo-server user`), **TOTP** z kodami zapasowymi, Ustawienia → Bezpieczeństwo (hasło, TOTP, sesje, „wyloguj wszędzie indziej”), **panel admina** (użytkownicy, stany kont, zadania `dead`).
+- **OAuth2/XOAUTH2** dla Gmaila i Microsoft 365 ([ADR 0013](docs/adr/0013-oauth2-xoauth2.md), [docs/admin/oauth.md](docs/admin/oauth.md)); Gmail w trybie generycznym (`\All` z deduplikacją, archiwizacja bez duplikatów).
+- **Backup i odtwarzanie** (`scripts/backup.sh`/`restore.sh`, tryby `metadata` i `full`, format `silo-metadata` v1 – [ADR 0014](docs/adr/0014-metadata-backup-format.md), [docs/admin/backup.md](docs/admin/backup.md)); **S3Store** ([ADR 0012](docs/adr/0012-s3-blobstore.md)).
+- **Hardening:** limity per IP (`429 rate_limited`), maks. 8 strumieni SSE na użytkownika, nagłówki bezpieczeństwa i CSP, `SILO_TRUSTED_PROXIES`, log zdarzeń bezpieczeństwa dla fail2ban, anty-SSRF przy każdym połączeniu (`internal/netx`), `session.expired` zamyka strumień po wylogowaniu; model zagrożeń: [docs/threat-model.md](docs/threat-model.md).
+- **PWA:** manifest, service worker z cache listy i treści, odczyt offline, baner nowej wersji; baner niezgodnej wersji z `minWebVersion`.
+- **Produkcja:** `docker-compose.yml` z Caddy ([Szybki start (prod)](#szybki-start-prod)), test upgrade z poprzedniego tagu w CI `silo-server`.
+
+Pomiary z 5–6.11.2026 (Windows 11, Docker Desktop): backup/odtwarzanie (`scripts/e2e-backup-restore.sh`, 54 wiadomości) – **PASS**: identyczne `GET /threads` INBOX (38 wątków), etykieta na 2 wątkach, draft z załącznikiem bez duplikatu, wiadomość zaplanowana, wątek odłożony z tym samym czasem wybudzenia i filtr z etykietą po nazwie; initial sync 1,9 s, restore → konto `live` 5,7 s, restore → pełna zgodność ze snooze 70,7 s (job `metadata_restore` ponawia co minutę). Skrzynka 200 000 wiadomości (`TestInitialSync`): initial sync 99 min 10 s bez błędów, RSS procesu maks. 77 MiB (próg 512 MB). Upgrade 0.4.0 → 0.5.0 na danych z filtrem i snooze (`scripts/upgrade-test.sh`): PASS (57 s, schemat 9 → 52, `reconcile` bez rozbieżności). e2e `silo-web`: wiele kont (liczniki obu kont, wysyłka z konta 2), tryb `local` z TOTP, PWA (lista offline po przeładowaniu po 281 ms), regresja archiwizacji/odpowiedzi/a11y – PASS. Stos produkcyjny zbudowany z kodu (`docker-compose.build.yml`): `/healthz`, `/api/v1/meta` i SPA przez Caddy z TLS, nagłówki i CSP SPA bez naruszeń (strona logowania w Chromium).
+
+Odłożone do 1.1: tryb `provider=gmail` (`X-GM-LABELS`/`X-GM-MSGID`/`X-GM-THRID` – etykiety Gmaila jako etykiety Silo, wątki Gmaila; brak konta testowego i symulatora X-GM), ManageSieve (filtry działają w Silo, nie na serwerze), OAuth2 dla klientów natywnych (wiązanie stanu ciasteczkiem – wariant z `redirectUri` w Fazie 6), API dla klientów offline (`GET /changes`, `ETag`/`If-None-Match` dla obiektów list – dziś `ETag` mają tylko niezmienne treści; `silo-web` tego nie wymaga, potrzebuje go `silo-mobile` w Fazie 6). Brak w UI: mapowanie ról folderów (API `PUT /accounts/{id}/folders` jest; role wykrywane z SPECIAL-USE i nazw). Niesprawdzone: Gmail i Microsoft 365 na żywych kontach (kroki ręczne w [macierzy](docs/compat-matrix.md#oauth2-i-xoauth2-faza-5)), migracja blobów `fs` → `s3`, fail2ban na żywym hoście.
 
 ## Stan: silo-mobile 0.1.0
 
@@ -128,29 +158,6 @@ Działa (UI `silo-web` 0.3.0 na API `silo-server` 0.4.0), ponad Fazę 3: wyszuki
 Pomiary e2e z 6.11.2026 (Windows 11, Docker Desktop, build produkcyjny przez `vite preview`, docker-mailserver 16): tag ustawiony drugim klientem IMAP (`UID STORE +FLAGS`) → etykieta na wierszu listy po 961–968 ms; etykieta z Silo jako keyword na serwerze w < 3 s; snooze „za minutę” → wiadomość w `Snoozed` na serwerze, poza INBOX, po czasie wybudzenia z powrotem w INBOX bez `\Seen` i na górze listy po 14,1–14,5 s (tick 30 s, próg 90 s); wiadomość zaplanowana ok. 2 min naprzód – przed czasem w żadnym folderze nadawcy ani w INBOX odbiorcy, dostarczona 4,4 s po czasie wysyłki (próg ±30 s); filtr `from:x → pomiń Odebrane + etykieta Y` – nowa wiadomość w Archive z keywordem Y, starsza po „Zastosuj”; wyszukiwanie z operatorami, podpowiedziami, chipami, wyszukiwaniem zaawansowanym i `422`; ustawienia po przeładowaniu, skróty wyłączone blokują `e`; komplet skrótów 6.6 (dwa scenariusze). Regresja Fazy 3 w tym samym przebiegu: `e` → wiersz poza DOM po 22,7 ms, Archive po 10,2 s (okno 10 s), draft w Drafts po 34,0 s, `syncNow` 78 ms, undo send – dostarczenie 0,5 s po oknie, 5000 wątków w 12,5 s z jednym long taskiem 54 ms, axe bez naruszeń.
 
 Nie działa jeszcze: ekran „Dodaj konto” i mapowanie folderów w UI (konto powstaje przy logowaniu; API serwera jest), wiele kont w UI, OAuth2, tryb Gmail – Faza 5; obsługa odbić (bounce/DSN), miniatury i przeglądarka PDF (PDF otwiera się/pobiera w nowej karcie), preset „Jutro po południu” w zaplanowanej wysyłce – później. Do ręcznego sprawdzenia w Thunderbirdzie: lista w [docs/history/FAZA4-NOTES.md](docs/history/FAZA4-NOTES.md) (sekcja „Do sprawdzenia ręcznie”).
-
-## Backup i odtwarzanie
-
-Postgres trzyma dwa rodzaje danych (plan 3.16, 4.1): **cache** poczty (wiadomości, foldery, wątki, etykiety systemowe, bloby mirrora), który synchronizacja odbudowuje z serwera IMAP, oraz **metadane** istniejące tylko w Silo. Skrypty działają na stosie `docker compose` (plik z `SILO_COMPOSE_FILE`, domyślnie `docker-compose.yml`, w dev `SILO_COMPOSE_FILE=docker-compose.dev.yml`; projekt z `COMPOSE_PROJECT_NAME`), także z obrazem produkcyjnym distroless:
-
-```sh
-scripts/backup.sh metadata --out backups/        # domyślny tryb; --user EMAIL: jeden użytkownik
-scripts/backup.sh full --out backups/            # pg_dump -Fc całej bazy + tar.gz wolumenu blobów
-scripts/restore.sh metadata backups/silo-metadata-<ts>.json [--merge]
-scripts/restore.sh full backups/silo-db-<ts>.dump [backups/silo-blobs-<ts>.tar.gz] [--yes]
-```
-
-| Tryb | Zawiera | Odtworzenie |
-|---|---|---|
-| `metadata` | JSON z `silo-server export-metadata`: użytkownicy (hasło, ustawienia, TOTP), konta (konfiguracja i zaszyfrowane hasło skrzynki), etykiety użytkownika z przypisaniami i snooze (po Message-ID), filtry, kontakty, drafty i wiadomości zaplanowane z załącznikami | na uruchomiony stos z pustą bazą: `migrate up` i `import-metadata`; konta robią initial sync, etykiety i snooze wracają w miarę synchronizacji (job `metadata_restore`), wiadomości zaplanowane wracają do kolejki na swój czas |
-| `full` | `pg_dump -Fc` całej bazy (cache i metadane) oraz archiwum katalogu blobów (mirror to cache, ale pełny backup oszczędza resync; bucket przy `SILO_BLOB_BACKEND=s3` archiwizuje się osobno) | zatrzymanie `silo-server`, `pg_restore --clean --if-exists`, podmiana zawartości wolumenu blobów, start serwera; nadpisuje dane, więc pyta o potwierdzenie (`--yes`) |
-
-Każdy plik dostaje `.sha256`, `restore.sh` sprawdza sumę, gdy plik leży obok.
-
-- **Ten sam `SILO_SECRET_KEY`.** Klucza nie ma w backupie (hasła skrzynek i sekrety TOTP są nim zaszyfrowane): przechowuj go osobno i odtwarzaj z tym samym kluczem (albo z nim jako `SILO_SECRET_KEY_PREVIOUS`).
-- **Pusta baza.** `restore.sh metadata` odmawia, gdy w bazie są użytkownicy; `--merge` importuje do istniejących (bez duplikatów). W trybie `imap` nie loguj się przed importem: logowanie zakłada użytkownika.
-- **Oczekujące operacje.** Operacje write-back jeszcze niezapisane na serwerze IMAP (`imap_op`, np. archiwizacja w oknie undo) nie trafiają do backupu metadanych; `backup.sh` czeka do 60 s (`SILO_BACKUP_WAIT`) na pustą kolejkę, potem ostrzega i eksportuje.
-- **Draft przejęty z innego klienta.** Draft otwarty z kopii w Drafts zapisanej przez inny klient (bez `X-Silo-Draft-Id`) wraca jako lokalny draft obok tej kopii (duplikat do usunięcia ręcznie).
 
 ## Stan: Faza 3
 
@@ -181,9 +188,10 @@ Nie działa jeszcze: interfejs użytkownika (`silo-web` ma tylko szkielet i klie
 - [ARCHITECTURE_AND_PLAN.md](ARCHITECTURE_AND_PLAN.md) – architektura i plan wdrożenia
 - [docs/adr/](docs/adr/README.md) – rekordy decyzji architektonicznych
 - [docs/compat-matrix.md](docs/compat-matrix.md) – macierz kompatybilności
-- [docs/admin/](docs/admin/README.md) – notatki dla administratora instancji
+- [docs/admin/](docs/admin/README.md) – przewodnik administratora: instalacja produkcyjna, tryb `local`, hasła aplikacji, upgrade, [backup](docs/admin/backup.md), S3, hardening, [OAuth2](docs/admin/oauth.md)
+- [docs/threat-model.md](docs/threat-model.md) – model zagrożeń
 - [docs/history/](docs/history/FAZA4-NOTES.md) – archiwum notatek koordynatora faz ([Faza 4](docs/history/FAZA4-NOTES.md), [silo-mobile](docs/history/SILO-MOBILE-NOTES.md))
-- [CONTRIBUTING.md](CONTRIBUTING.md) – konwencje i workflow dla wszystkich trzech repo
+- [CONTRIBUTING.md](CONTRIBUTING.md) – konwencje i workflow dla wszystkich czterech repo
 
 ## Licencja
 
