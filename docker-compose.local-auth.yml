@@ -1,0 +1,11 @@
+# Nakladka na docker-compose.backup-test.yml: silo-server w trybie local (konta Silo, TOTP,
+# panel admina) dla e2e silo-web (e2e/local-auth.e2e.ts). Domyslny serwer IMAP/SMTP
+# (mailserver) zostaje, wiec uzytkownik moze dodac skrzynke dev1@silo.test.
+#   docker compose -p silo-bt -f docker-compose.backup-test.yml -f docker-compose.local-auth.yml up -d --build
+#   echo 'admin-e2e-password' | docker compose -p silo-bt -f docker-compose.backup-test.yml \
+#     -f docker-compose.local-auth.yml exec -T silo-server /silo-server user add \
+#     --email admin@silo.test --admin --password-stdin
+services:
+  silo-server:
+    environment:
+      SILO_AUTH_MODE: local
