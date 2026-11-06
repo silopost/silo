@@ -1,6 +1,6 @@
 # Współtworzenie Silo
 
-Ten dokument jest **głównym źródłem konwencji** dla wszystkich trzech repozytoriów: `silo`, `silo-server`, `silo-web`. Pozostałe repo odsyłają tutaj.
+Ten dokument jest **głównym źródłem konwencji** dla wszystkich czterech repozytoriów: `silo`, `silo-server`, `silo-web`, `silo-mobile`. Pozostałe repo odsyłają tutaj.
 
 ## Język
 
@@ -17,7 +17,7 @@ Zmiana łamiąca: `!` po typie/scope lub stopka `BREAKING CHANGE:`.
 
 Przykłady:
 
-```
+```text
 feat(sync): add QRESYNC incremental folder sync
 fix(api): return 409 on stale thread modification
 docs: add ADR for job queue in postgres
@@ -34,11 +34,11 @@ feat(ui)!: replace label picker with command palette
 
 ## `.editorconfig`
 
-Wspólny plik jest w repo `silo`; kopiujemy go bez zmian do `silo-server` i `silo-web`. Zasady: UTF-8, LF, końcowy newline, tab dla Go, 2 spacje dla yaml/json/md/ts/tsx.
+Wspólny plik jest w repo `silo`; kopiujemy go bez zmian do `silo-server`, `silo-web` i `silo-mobile`. Zasady: UTF-8, LF, końcowy newline, tab dla Go, 2 spacje dla yaml/json/md/ts/tsx.
 
 ## Wersjonowanie
 
-SemVer **niezależny per repo** ([plan 2.4](ARCHITECTURE_AND_PLAN.md#24-wersjonowanie-i-kontrakt)): `silo-server` i `silo-web` mają własne wersje, `silo` ma wersję dystrybucji (zestaw przypiętych tagów obrazów). Kontrakt między nimi to OpenAPI generowany z backendu; przed 1.0 zmiany łamiące opisujemy w [docs/compat-matrix.md](docs/compat-matrix.md).
+SemVer **niezależny per repo** ([plan 2.4](ARCHITECTURE_AND_PLAN.md#24-wersjonowanie-i-kontrakt)): `silo-server`, `silo-web` i `silo-mobile` mają własne wersje, `silo` ma wersję dystrybucji (zestaw przypiętych tagów obrazów). Kontrakt między nimi to OpenAPI generowany z backendu; przed 1.0 zmiany łamiące opisujemy w [docs/compat-matrix.md](docs/compat-matrix.md).
 
 ## ADR
 

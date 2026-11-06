@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD036 -->
+
 > Archiwum: notatki koordynatora Fazy 4 skopiowane bez zmian z `wt/FAZA4-NOTES.md` przy scaleniu (2026-11-06). Hashe wycinków odnoszą się do gałęzi `faza-4`, scalonych fast-forward do `main` (`silo-server` `v0.4.0`, `silo-web` `v0.3.0`). Wynik e2e po scaleniu: README, sekcja „Stan: Faza 4”, i plan, Faza 4.
 
 # Faza 4 – notatki koordynatora (poza repo; do scalenia przez koordynatora nadrzędnego)
@@ -7,6 +9,7 @@ Gałęzie: `faza-4` w `wt/silo-server` i `wt/silo-web` (worktree od `main`). Rep
 ## Propozycje zmian w planie (`silo/ARCHITECTURE_AND_PLAN.md`)
 
 (uzupełniane po każdym wycinku)
+
 - 3.12 (W1): `search_tsv` budowany tokenizerem aplikacji (`internal/search`: ciągi liter/cyfr, fold diakrytyków w Go, jawne pozycje/wagi), nie `to_tsvector(unaccent)`; zapytanie = literał `::tsquery` (słowo = prefiks, wiele tokenów = fraza `<->`, `subject:` = waga A po `search_tsv`). Adresy e-mail dzielone na słowa (`firma` trafia `jan@firma.pl`).
 - 3.12 (W1): `cc:`/`bcc:` po `cc_addrs`/`bcc_addrs` jsonb (`EXISTS jsonb_array_elements … ILIKE`), bez nowych kolumn `cc_text`/`bcc_text`; `deliveredto:` = `recipients_text` (brak nagłówka Delivered-To w schemacie); `older_than`/`newer_than` liczone w Go (`now` z zakresu), nie `now() - interval`.
 - 3.12/5.2 (W1): CTE `hits` = wątki z EXISTS po messages, `LIMIT 2000`, `SET LOCAL plan_cache_mode=force_custom_plan` (generyczny plan psuł p95); timeout → pusta strona + `approximate: true`; `indexing: {done}` tylko z `q`; `resultSizeEstimate` = liczba trafionych wątków (≤ 2000).
@@ -32,10 +35,12 @@ Gałęzie: `faza-4` w `wt/silo-server` i `wt/silo-web` (worktree od `main`). Rep
 - 6.6 (W7 web): komplet skrótów w `keymap.ts`; `v` = popover „Przenieś do” (Odebrane/Archiwum/Spam/Kosz + foldery `type: folder`; folder = `modify` +folder −INBOX −inne foldery wątku); `l`/`v` na liście działają na zaznaczenie, bez niego na wiersz z kursorem; `g l` = dialog-picker (widoki systemowe + etykiety + foldery, filtr, Enter = pierwszy wynik) → `/u/<n>/<slug|l_id>`; `g 1..9` = n-te konto wg `position` → `/u/<position>/inbox`; `n`/`p` = kursor wiadomości w wątku (fokus `article[data-message-id]`); `Ctrl/⌘+Enter` i `Esc` jako wpisy `component: true` (obsługują komponenty, działają w polach i przy `keyboardShortcutsEnabled: false`).
 
 ## Luki serwera do następnej fazy
+
 - ~~W7: `PATCH /labels/{id}` nie przyjmuje `parentId`~~ – **zamknięte w W8** (silo-server `4809973`, silo-web `aac6eb9`): `parentId` (`l_…` lub `null`) tylko dla etykiet `user`; rodzic = etykieta `user` tego samego konta, nie ona sama ani jej potomek, inaczej `422 invalid_parent`; folder/systemowa → `400 validation_failed` (jak rename – plan 5.3 mówi 422 dla domeny, ale `ErrNotModifiable` od Fazy 3 mapuje się na 400; zostawione dla spójności). Keyword się nie zmienia: `mail.AssignKeyword` dostaje nazwę liścia (`labels.name` nie zawiera ścieżki), rename też slugifikuje tylko nową nazwę liścia. Folderów nie da się przenosić (to byłby RENAME na serwerze – poza zakresem).
 - W8 (propozycja do 5.1): `PATCH /labels/{id}` – dopisać `parentId` (nullable) i `422 invalid_parent`.
 
 ## Zmiany env / `.env.example` / dev compose
+
 - W1: nowe env tylko testowe: `SILO_BENCH_SEARCH`, `SILO_BENCH_MESSAGES`, `SILO_BENCH_EXPLAIN`. Migracja `000006_search_index` (`messages.search_ver` + indeksy częściowe) – ryzyko kolizji numeru z innymi wycinkami.
 - W2: brak nowych env i migracji; nowy job ogólny `snooze_wake` (kolejkowany co 30 s z `main.go` i przez ingest).
 - W3: brak nowych env; migracja `000007_filters` (kolizja numeru możliwa z innymi gałęziami); nowe joby ogólne `filter_eval` (ingest) i `filter_apply` (API).
@@ -45,6 +50,7 @@ Gałęzie: `faza-4` w `wt/silo-server` i `wt/silo-web` (worktree od `main`). Rep
 ## ADR / compat-matrix
 
 ## Odstępstwa od DoD Fazy 4
+
 - W1: strefa czasowa z `users.settings.timezone` (brak klucza → UTC; TODO: `PATCH /settings` musi zapisywać `timezone`). Bench 1M na syntetycznych danych (search_tsv z to_tsvector, ASCII) – nie przez ingest.
 - W2: DoD snooze i schedule send pokryte testami z Dovecotem na skróconych czasach (wake_at w przeszłości + ręczny tick; sendAt = now+8 s, dostarczenie ~0,1 s po czasie); UIDVALIDITY przetestowane przez DELETE+CREATE folderu Snoozed z tymi samymi wiadomościami (profile full i no-move). Wybudzenie wymaga działającego Silo.
 - W3: `forwardTo` zaimplementowany przez compose (draft `forward` + `Send{Immediate}`, bez okna undo-send) – bez weryfikacji adresu docelowego (Gmail wymaga potwierdzenia), bez załączników oryginału (prefill forward = tekst); nie przekazuje poczty z adresu własnego konta. Test czekania na treść z timeoutem jest w `internal/http/api` (fałszywy fetcher), test Dovecot pokrywa ścieżkę z treścią.
@@ -54,6 +60,7 @@ Gałęzie: `faza-4` w `wt/silo-server` i `wt/silo-web` (worktree od `main`). Rep
 - W7 (silo-web): `e2e/shortcuts.e2e.ts` rozszerzony o drugi scenariusz (n p l v, g l, g 1/g 9, Shift+I/U, ! b Shift+C /, sekwencje g/*, Ctrl+Enter, Esc, negatywne w compose/SearchBox) – napisany i kompilowany (`npm run typecheck`), nieuruchomiony; scenariusz tworzy etykietę `<tag>-etykieta`, której `deleteTagged` nie sprząta. Weryfikacja: typecheck, lint, format:check, vitest 153 testy (97 → 153), build.
 
 ## Do sprawdzenia ręcznie po scaleniu (przeglądarka / Thunderbird)
+
 - W2: Thunderbird: snooze → wiadomość znika z INBOX i jest w `Snoozed` (z `$SiloSnoozed`), po czasie wraca nieprzeczytana; przeniesienie z `Snoozed` do INBOX w TB kasuje snooze w Silo (≤ 30 s); zaplanowana wiadomość nie widnieje w Drafts TB do wysłania.
 - W3: Thunderbird: filtr `from:x → archiwizuj + etykieta Y` – nowa wiadomość od x znika z INBOX w TB po syncu Silo (krótko widoczna), w Archive ma keyword Y; „Zastosuj” przenosi stare. Web: brak UI filtrów i ustawień (strumień silo-web).
 - W5: Thunderbird: tag nadany w TB → etykieta w Silo (INBOX < 5 s, inne foldery ≤ interwał pollingu), etykieta z Silo widoczna jako tag (nazwa = keyword; „Ważne” = `$label1`); folder z 26 tagami → 27. etykieta z ostrzeżeniem `partial` (UI silo-web do zrobienia); „Synchronizuj ponownie od zera” w ustawieniach (UI) → etykiety, snooze i drafty wracają.
@@ -61,6 +68,7 @@ Gałęzie: `faza-4` w `wt/silo-server` i `wt/silo-web` (worktree od `main`). Rep
 - W7 (przeglądarka): wklejenie/upuszczenie obrazka w treść (podgląd → upload → `cid:` w zapisanym drafcie, wysłana wiadomość wyświetla obrazek u odbiorcy), usunięcie obrazka z treści; miniatury w wątku i compose; forward z załącznikami i ostrzeżeniami; powiadomienia desktop (zgoda przeglądarki, klik otwiera wątek); wszystkie skróty z dialogu `?` na układzie polskim (`#`, `!`, `?`, `*`), w tym wyłączenie w Ustawieniach.
 
 ## Wycinki
+
 - W1 search (silo-server `b9c3af9`, `bf5bafd`, `7cdf446`): parser+AST+ToSQL+Matcher (`internal/search`, ~100 przypadków), property test SQL==Matcher (240 wiadomości, ~120 zapytań), API `q`/suggest/history, bench 1M: słowo p95 304 ms, `from:` p95 272 ms.
 - W2 snooze + schedule send (silo-server `fee13e8`, `db93c2a`, `681d005`, `7dc7e2a`): rola `snoozed` + folder na żądanie, `POST/DELETE /threads/{id}/snooze`, `GET /snooze/presets`, job `snooze_wake` (30 s + ingest), undo snooze, `scheduledAt`/`outboundId`, kopia draftu usuwana przy planowaniu; testy Dovecot (full, no-move) dla snooze/wake/nowej wiadomości/wyciągnięcia/UIDVALIDITY/undo oraz schedule send (dostarczenie ~0,1 s po sendAt).
 - W3 filtry + ustawienia (silo-server `c95ea32`, `9fd9906`, `832d24d`): `internal/filters` (CRUD, `filter_eval` przy ingest, `filter_apply`, forward), `GET/PATCH /settings`, `filter.applied`, `settings.updated`, migracja 000007; testy: API (CRUD/kolejność/422/cudzy 404/CSRF/Bearer/apply/ingest/snooze/forward/czekanie na treść, settings), Dovecot full (nowa → Archive + keyword, sprzed `filters_since` nietknięta, apply wstecz, słowo z treści).
@@ -75,6 +83,7 @@ Gałęzie: `faza-4` w `wt/silo-server` i `wt/silo-web` (worktree od `main`). Rep
 Legenda: ✅ zrobione (gdzie), ⚠️ częściowo (czego brakuje), ❌ nie (dlaczego). „e2e” = scenariusz Playwright napisany i skompilowany (`npm run typecheck`), **nieuruchomiony** w tej izolacji (dev compose zajęty) – do uruchomienia po scaleniu (instrukcja scalenia, pkt 4).
 
 **Definition of done**
+
 - ✅ ≥ 60 przypadków parsera → AST i SQL (W1: ~100 w `internal/search`); property test matcher vs SQL (240 wiadomości, ~120 zapytań).
 - ⚠️ p95 < 500 ms przy 1M: słowo 304 ms, `from:` 272 ms (W1, bench `SILO_BENCH_SEARCH`), ale na danych syntetycznych (`to_tsvector`, ASCII), nie przez ingest; `has:attachment` przed pobraniem treści ✅ (W1, BODYSTRUCTURE; e2e `search.e2e.ts`).
 - ⚠️ Etykieta Silo → keyword, keyword innego klienta → etykieta < 5 s (INBOX): ✅ testy Dovecot W5 (drugi klient, 0,6 s); e2e `labels-keywords.e2e.ts` (pomiar < 5 s); brak sprawdzenia w prawdziwym Thunderbirdzie (sekcja „Do sprawdzenia ręcznie”); „≤ interwał pollingu (inne foldery)” tylko w testach serwera.
@@ -85,6 +94,7 @@ Legenda: ✅ zrobione (gdzie), ⚠️ częściowo (czego brakuje), ❌ nie (dlac
 - ⚠️ Każdy skrót 6.6 ma test e2e, żaden nie odpala w compose ani SearchBox: `shortcuts.e2e.ts` (W7, dwa scenariusze, negatywne w compose/SearchBox) + vitest; e2e nieuruchomione.
 
 **Zakres**
+
 - ✅ Parser + SQL builder + matcher (W1); SearchChips, AdvancedSearchPopover, wskaźnik indeksowania (W6); e2e `search.e2e.ts`.
 - ✅ Pełna tabela skrótów z `g *` i dialogiem `?` (W7).
 - ✅ Upload załączników z postępem (Faza 3, XHR), wklejanie/upuszczanie obrazów (W7).
@@ -103,14 +113,17 @@ Legenda: ✅ zrobione (gdzie), ⚠️ częściowo (czego brakuje), ❌ nie (dlac
 - ✅ Załączniki oryginału przy przekazaniu (W4 serwer, `warnings`; W7 web).
 
 **Weryfikacja**
+
 - ⚠️ Playwright Fazy 4 nieuruchomiony (wszystkie scenariusze wyżej + `shortcuts.e2e.ts`); serwer: pełne `go test ./...` z Dockerem zielone po W5, po W8 zielone `internal/http/api` + `internal/ops`; web: typecheck/lint/format/vitest (155)/build zielone.
 
 ## Stan wejściowy (po zamknięciu Fazy 3)
+
 - silo-server main `dd4ad23` (tag v0.3.0) – `faza-4` wychodzi z tego commita, rebase niepotrzebny.
 - silo-web main `00a88ed` (tag v0.2.0, serverRef v0.3.0, Playwright `e2e/`, 50 testów vitest) – `faza-4` w `wt/silo-web` utworzona z `ed5971e`; przebazowana (fast-forward, bez własnych commitów) na `00a88ed` przed W6; `npm ci` odświeżone.
 - silo main `0d8fef5` (tag v0.3.0). Dev compose w użyciu przez strumień `silo-mobile` (konto `dev3@`, korpus 5000 wątków) – nietykalny.
 
 ## Kolizja z gałęzią `faza-5`: `GET/PATCH /settings` (do decyzji przy scalaniu)
+
 Dwie niezależne implementacje tego samego kontraktu (ta sama ścieżka, te same `OperationID` `getSettings`/`updateSettings`, ten sam zapis do `users.settings` snake_case):
 
 | Aspekt | faza-4 `c95ea32` (`internal/auth/settings.go`, `internal/http/api/settings.go`) | faza-5 `b470b62` (`internal/accounts/settings.go`, `internal/http/api/settings.go`) |
@@ -126,22 +139,27 @@ Dwie niezależne implementacje tego samego kontraktu (ta sama ścieżka, te same
 **Rekomendacja:** przy scalaniu zachować implementację **faza-4** (szerszy kontrakt: `updatedAt` i `settings.updated` są potrzebne wieloklientowo – mobile; sanitizacja sygnatury; `timezone` używana przez wyszukiwarkę/filtry/presety z tej gałęzi) i w `faza-5` usunąć `b470b62` (`git rebase --onto` lub revert) po jej przebazowaniu na scalone `main`; jeśli faza-5 oparła na nim kolejne commity (`internal/accounts.UpdateSettings`), przenieść wywołania na `internal/auth` z faza-4. Do uzgodnienia przy okazji: kody błędów (faza-4: 422 `invalid_setting`/`invalid_timezone`; faza-5: 400/404) – plan 5.3 przewiduje 400 dla walidacji; kompromis: zostawić 422 z `code` (stabilne dla klienta) i dopisać do 5.3, albo przemapować na 400 `validation_failed` jednym commitem po scaleniu. Limit sygnatury: 32 KiB (faza-4) vs 10 kB – wybrać jeden i wpisać do planu 5.1.
 
 ## Regresja serwera po W5 (koordynator)
+
 `SILO_REQUIRE_DOCKER=true go test ./... -count=1` na `faza-4` = `605ed25`: exit 0, wszystkie pakiety PASS (sync 525 s, http/api 191 s, mail 123 s, worker 85 s, store 80 s, mailview 71 s, events 45 s, imapx 32 s, pozostałe < 10 s); pełny przebieg ~20 min na tej maszynie.
 
 ## Instrukcja scalenia (koordynator nadrzędny)
+
 1. `silo-server`: `git -C silo-server merge --ff-only faza-4` (gałąź wychodzi z `main dd4ad23`, brak rozjazdu) → tag `v0.4.0` po przeglądzie; migracje `000006`–`000009` są addytywne (nowe kolumny/tabele/indeksy; `search_tsv` przeindeksowuje się w tle przy starcie – przy korpusie dev wyszukiwanie po starych wiadomościach jest niepełne do końca reindeksu). Uzgodnić numerację z `faza-5` (ta gałąź zaczyna od `000006`; faza-5 musi przenumerować swoje migracje po rebase).
 2. `silo-web`: `git -C silo-web merge --ff-only faza-4` (wychodzi z `main 00a88ed`), następnie – po tagu serwera – `npm run gen:api -- --server-ref v0.4.0`, `silo.serverRef = "v0.4.0"`, `version` → `0.3.0`, tag `v0.3.0` (nie zrobione na gałęzi: tag serwera nie istniał). Do tego czasu job CI `api-contract` pokazuje różnicę schematu.
 3. `silo`: plan – nanieść propozycje z sekcji wyżej (3.7, 3.9, 3.10, 3.11, 3.12, 5.1–5.4, 6.3, 6.6, 7 Faza 4 → status), `.env.example` + dev compose: `SILO_SYNC_KEYWORD_FOLDER_LIMIT` (domyślnie 26; `0` = bez limitu), `docs/compat-matrix.md`: wiersz `silo-server 0.4.0 ↔ silo-web 0.3.0` (zmiany addytywne, ale `SessionInfo.settings` zyskało `desktopNotifications`/`updatedAt`, wątek zyskał `snoozedUntil`/`scheduledAt`/`outboundId`, załącznik `thumbnail`/`cid`/`inline`; web 0.2.0 działa z serwerem 0.4.0, web 0.3.0 wymaga serwera ≥ 0.4.0), `docs/admin`: limit 26 keywordów maildir (Dovecot 2.4 **nie odrzuca** 27. – trzyma go tylko w indeksie; sdbox/mdbox bez limitu), `rebuild-cache`, folder `Snoozed`, job `snooze_wake`. `scripts/e2e-smoke.sh`: scenariusze DoD Fazy 4 (po scaleniu, z dev compose).
 4. Po scaleniu uruchomić Playwright (`npm run e2e` w silo-web przeciwko dev compose) – scenariusze Fazy 4 napisane, nieuruchomione w tej izolacji; oraz ręczne sprawdzenia z sekcji „Do sprawdzenia ręcznie”.
 
 ## Propozycje ADR (repo `silo`)
+
 - ADR 0008: tokenizacja `search_tsv` w aplikacji (Go) zamiast `to_tsvector('simple', unaccent)` – jeden tokenizer dla SQL i matchera filtrów; konsekwencja: reindeks przy zmianie wersji tokenizera (`messages.search_ver`).
 - ADR 0009: stan keywordu etykiety per folder (`label_folder_state`, `keywordState: partial`) i liczenie limitu po `PERMANENTFLAGS` zamiast polegania na odmowie serwera (Dovecot 2.4 maildir przyjmuje 27. keyword „po cichu”).
 - (opcjonalnie) ADR o blokadzie `rebuild` przy oczekujących operacjach (409 `rebuild_blocked`) zamiast ich migrowania.
 
 ## Uwagi proceduralne koordynatora
+
 - W7: pierwszy wykonawca (Opus) został przerwany pauzą użytkownika w momencie wywołania `git commit` (odrzucenie wywołania); zgodnie z poleceniem koordynatora nadrzędnego niezacommitowaną pracę (załączniki/inline, 7 plików) przejął nowy wykonawca W7b z nakazem weryfikacji (lint/format/testy) przed commitem i zatrzymania się przy jakiejkolwiek odmowie uprawnień. Koordynator nadrzędny potwierdził (06.11, 03:05): odrzucenie było odmową uprawnień w czasie nieobecności użytkownika, nie oceną merytoryczną – commit ponowiono normalnie.
 
 ## Regresja końcowa (koordynator, po W8)
+
 - silo-server `978df8c`: `SILO_REQUIRE_DOCKER=true go test ./... -count=1` → exit 0, wszystkie pakiety PASS.
 - silo-web `d6602be`: `typecheck` (z e2e), `lint`, `format:check`, `vitest` 155/155 (jedna porażka w 1 z 5 przebiegów podczas równoległej regresji serwera z Dockerem – niestabilność pod obciążeniem, nazwa testu nieustalona; przebiegi bez obciążenia 4× 155/155), `build` OK. Playwright nieuruchomiony (dev compose).
