@@ -1,0 +1,37 @@
+# Caddy dla docker-compose.yml (plan 2.1): TLS (ACME, dla localhost certyfikat wewnetrzny),
+# /api -> silo-server, reszta -> silo-web (SPA). Naglowki bezpieczenstwa API ustawia silo-server
+# (README silo-server, "Hardening"); tutaj tylko dla SPA.
+{$SILO_DOMAIN} {
+	# SSE: bez kompresji i buforowania (zdarzenia maja dochodzic od razu).
+	handle /api/v1/events {
+		reverse_proxy silo-server:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle /api/* {
+		encode zstd gzip
+		reverse_proxy silo-server:8080
+	}
+
+	handle /healthz {
+		reverse_proxy silo-server:8080
+	}
+
+	handle {
+		encode zstd gzip
+		header {
+			# HTML wiadomosci jest w iframe sandbox (srcdoc), ktory dziedziczy te polityke:
+			# img-src https:/http: pozwala na obrazy zdalne po kliknieciu "Pokaz obrazy"
+			# (domyslnie blokuje je CSP samej ramki), data:/blob: - podglady i kod QR TOTP.
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+			Referrer-Policy "no-referrer"
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+			-Server
+		}
+		reverse_proxy silo-web:80
+	}
+}
