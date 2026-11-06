@@ -14,3 +14,7 @@ Format: [0000-template.md](0000-template.md). Zasady dodawania ADR: [CONTRIBUTIN
 | [0008](0008-search-tokenizer-in-app.md) | Tokenizer wyszukiwania w aplikacji zamiast `to_tsvector(unaccent)` | Przyjęty |
 | [0009](0009-keyword-state-per-folder.md) | Stan keywordu etykiety per folder i limit liczony z `PERMANENTFLAGS` | Przyjęty |
 | [0010](0010-react-native-for-silo-mobile.md) | React Native (Expo) dla `silo-mobile` | Przyjęty |
+| [0011](0011-local-auth-mode-and-totp.md) | Tryb `local` z hasłem Silo i własnym TOTP | Przyjęty |
+| [0012](0012-s3-blobstore.md) | `S3Store` na minio-go | Przyjęty |
+| [0013](0013-oauth2-xoauth2.md) | OAuth2 (authorization code + PKCE) i XOAUTH2 dla Gmaila i Microsoft 365 | Przyjęty |
+| [0014](0014-metadata-backup-format.md) | Format backupu metadanych `silo-metadata` v1 | Przyjęty |
