@@ -5,16 +5,18 @@
 #   b. seed (scripts/seed-mail.sh) do dev1@silo.test;
 #   c. logowanie, czekanie na sync-status `live` (czas initial sync);
 #   d. metadane: etykieta uzytkownika Backup-Test na 2 watkach INBOX, archiwizacja 1 watku,
-#      draft z zalacznikiem (zsynchronizowany do Drafts), draft zaplanowany na +1 h (SCHEDULED);
-#      migawka A: INBOX (bez id i pendingSync, etykiety po nazwach), liczba watkow Backup-Test;
+#      draft z zalacznikiem (zsynchronizowany do Drafts), draft zaplanowany na +1 h (SCHEDULED),
+#      snooze 1 watku na +1 h (SNOOZED, folder Snoozed na serwerze), filtr z etykieta Backup-Test;
+#      migawka A: INBOX (bez id i pendingSync, etykiety po nazwach), liczba watkow Backup-Test,
+#      SNOOZED (temat i czas wybudzenia), filtry (etykiety po nazwach);
 #   e. scripts/backup.sh metadata;
 #   f. usuniecie kontenerow i wolumenow Silo (pgdata, blobs). DoD mowi `down -v`; tu chodzi
 #      o wolumeny Silo: serwer poczty (dms-mail) gra role zewnetrznego IMAP, jak w produkcji;
 #   g. up silo-server (pusta baza, migracje), scripts/restore.sh metadata;
-#   h. logowanie, czekanie na `live` i na 2 watki z Backup-Test (job metadata_restore);
-#   i. porownanie migawek A i B, draft (temat, tresc, zalacznik z rozmiarem), SCHEDULED;
+#   h. logowanie, czekanie na `live`, na 2 watki z Backup-Test i snooze (job metadata_restore);
+#   i. porownanie migawek A i B, draft (temat, tresc, zalacznik z rozmiarem), SCHEDULED,
+#      SNOOZED, filtr z etykieta po nazwie;
 #   j. PASS/FAIL i czasy.
-# Pominiete: snooze i filtry (API Fazy 4 nie ma na tej galezi); sprawdza je test serwera.
 # Opcje: --keep (zostaw stos silo-bt; domyslnie down -v projektu silo-bt), -h/--help.
 # Srodowisko: SILO_BT_PG_PORT (15432), SILO_BT_SERVER_PORT (18080), SILO_BT_IMAP_PORT (11143),
 #   SILO_BT_SMTP_PORT (12525), SILO_BT_SUBMISSION_PORT (11587), SILO_BT_TIMEOUT (s, domyslnie 180).
@@ -36,6 +38,7 @@ BASE="http://localhost:$SILO_BT_SERVER_PORT"
 USER_EMAIL=dev1@silo.test
 PASSWORD=devpass1
 LABEL=Backup-Test
+FILTER=Backup-Filter
 COMPOSE=(docker compose -f "$SILO_COMPOSE_FILE")
 KEEP=0
 
@@ -175,6 +178,25 @@ SELECT concat(coalesce(e->>'draftId', ''), '|', e->>'subject') FROM s, jsonb_arr
 WHERE e->>'subject' = '$2'"
 }
 
+# Odlozone watki: "temat|snoozedUntil" na wiersz, posortowane.
+snoozed_state() {
+  api GET '/threads?labelId=SNOOZED&limit=100' | pg_json "
+SELECT concat(e->>'subject', '|', e->>'snoozedUntil') FROM s, jsonb_array_elements(j->'threads') e ORDER BY 1"
+}
+
+# Filtry konta: "nazwa|kryteria|enabled|archive|etykiety po nazwach" na wiersz.
+filters_state() {
+  local filters labels
+  filters="$(api GET "/filters?accountId=$ACC")"
+  labels="$(api GET /labels)"
+  printf '{"f":%s,"l":%s}' "$filters" "$labels" | pg_json "
+SELECT concat_ws('|', f.e->>'name', f.e->>'criteria', f.e->>'enabled', f.e->'actions'->>'archive',
+  (SELECT coalesce(string_agg(coalesce(l.e->>'name', '?' || x.v), ',' ORDER BY coalesce(l.e->>'name', '?' || x.v)), '')
+     FROM jsonb_array_elements_text(coalesce(nullif(f.e->'actions'->'addLabelIds', 'null'), '[]')) x(v)
+     LEFT JOIN jsonb_array_elements(s.j->'l'->'labels') l(e) ON l.e->>'id' = x.v))
+FROM s, jsonb_array_elements(s.j->'f'->'filters') f(e) ORDER BY 1"
+}
+
 # Stan draftu: temat|tresc|nazwa zalacznika|rozmiar|id zalacznika.
 draft_state() {
   api GET "/drafts/$1" | pg_json "
@@ -223,10 +245,10 @@ sync_ms="$(wait_live "$t0")"
 echo "  konto $ACC: login -> live $(secs "$sync_ms")"
 
 # d. Metadane i migawka A.
-step "d. metadane: etykieta, archiwizacja, drafty"
+step "d. metadane: etykieta, archiwizacja, drafty, snooze, filtr"
 inbox="$(api GET '/threads?labelId=INBOX&limit=100')"
-mapfile -t tids < <(printf '%s' "$inbox" | { grep -o '"id":"t_[^"]*"' || true; } | sed 's/.*:"\(.*\)"$/\1/' | head -n3)
-[ "${#tids[@]}" -eq 3 ] || die "za malo watkow w INBOX (${#tids[@]})"
+mapfile -t tids < <(printf '%s' "$inbox" | { grep -o '"id":"t_[^"]*"' || true; } | sed 's/.*:"\(.*\)"$/\1/' | head -n4)
+[ "${#tids[@]}" -eq 4 ] || die "za malo watkow w INBOX (${#tids[@]})"
 lbl="$(api POST /labels "{\"name\":\"$LABEL\",\"type\":\"user\"}" | json_str id)"
 [ -n "$lbl" ] || die "nie utworzono etykiety $LABEL"
 api POST /threads/modify "{\"ids\":[\"${tids[0]}\",\"${tids[1]}\"],\"addLabelIds\":[\"$lbl\"]}" > /dev/null || die "przypisanie $LABEL"
@@ -256,6 +278,13 @@ api PUT "/drafts/$d2_id" "{\"version\":$d2_ver,\"to\":[{\"email\":\"dev2@silo.te
 api POST "/drafts/$d2_id/send" "{\"sendAt\":\"$send_at\"}" > /dev/null || die "zaplanowanie wysylki $d2_id"
 echo "  draft $d2_id zaplanowany na $send_at"
 
+snooze_until="$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)"
+api POST "/threads/${tids[3]}/snooze" "{\"until\":\"$snooze_until\"}" > /dev/null || die "snooze ${tids[3]}"
+echo "  watek ${tids[3]} odlozony do $snooze_until"
+filter_id="$(api POST /filters "{\"accountId\":\"$ACC\",\"name\":\"$FILTER\",\"criteria\":\"from:backup-filter@example.com\",\"actions\":{\"archive\":true,\"addLabelIds\":[\"$lbl\"]}}" | json_str id)"
+[ -n "$filter_id" ] || die "nie utworzono filtra $FILTER"
+echo "  filtr $filter_id: from:backup-filter@example.com -> archiwizuj + $LABEL"
+
 sleep 5 # okno undo (1 s) + write-back
 wait_no_pending_ops
 snapshot > "$tmp/A.txt"
@@ -264,8 +293,13 @@ a_draft="$(draft_state "$d1_id")"
 a_drafts="$(threads_with_subject DRAFT "$draft_subject" | grep -c . || true)"
 a_sched="$(threads_with_subject SCHEDULED "$sched_subject" | grep -c . || true)"
 a_att="$(attachment_size "${a_draft##*|}" || echo -)"
+snoozed_state > "$tmp/A-snoozed.txt"
+filters_state > "$tmp/A-filters.txt"
 echo "  migawka A: INBOX $(wc -l < "$tmp/A.txt" | tr -d ' ') watkow, $LABEL: $a_label, DRAFT z tematem: $a_drafts, SCHEDULED: $a_sched, zalacznik: $a_att B"
+echo "    SNOOZED: $(paste -sd ';' "$tmp/A-snoozed.txt"); filtry: $(paste -sd ';' "$tmp/A-filters.txt")"
 [ "$a_label" = 2 ] || die "przed backupem $LABEL ma $a_label watkow zamiast 2"
+[ "$(grep -c . "$tmp/A-snoozed.txt")" = 1 ] || die "przed backupem SNOOZED ma $(grep -c . "$tmp/A-snoozed.txt") watkow zamiast 1"
+grep -q "|$LABEL\$" "$tmp/A-filters.txt" || die "przed backupem filtr bez etykiety $LABEL: $(cat "$tmp/A-filters.txt")"
 
 # e. Backup.
 step "e. scripts/backup.sh metadata"
@@ -302,7 +336,8 @@ while :; do
   [ -n "$lbl2" ] || lbl2="$(label_id "$LABEL" 2> /dev/null || true)"
   if [ -n "$lbl2" ]; then
     b_label="$(api GET "/threads?labelId=$lbl2&limit=100" 2> /dev/null | count_threads || true)"
-    if [ "$b_label" = 2 ]; then
+    snoozed_state > "$tmp/B-snoozed.txt" 2> /dev/null || true
+    if [ "$b_label" = 2 ] && cmp -s "$tmp/A-snoozed.txt" "$tmp/B-snoozed.txt"; then
       snapshot > "$tmp/B.txt"
       if cmp -s "$tmp/A.txt" "$tmp/B.txt"; then
         match_ms=$(($(now_ms) - t_restore))
@@ -314,6 +349,8 @@ while :; do
   sleep 3
 done
 [ -f "$tmp/B.txt" ] || snapshot > "$tmp/B.txt"
+snoozed_state > "$tmp/B-snoozed.txt"
+filters_state > "$tmp/B-filters.txt"
 
 # i. Porownanie.
 step "i. porownanie"
@@ -338,12 +375,16 @@ b_att="-"
 check "zalacznik draftu do pobrania: $b_att B (oczekiwane $att_size B)" test "$b_att" = "$att_size"
 b_sched="$(threads_with_subject SCHEDULED "$sched_subject" | grep -c . || true)"
 check "wiadomosc zaplanowana w SCHEDULED (przed: $a_sched, po: $b_sched)" test "$b_sched" = 1
+b_snoozed="$(paste -sd ';' "$tmp/B-snoozed.txt")"
+check "watek nadal w SNOOZED z tym samym czasem (przed: $(paste -sd ';' "$tmp/A-snoozed.txt"), po: ${b_snoozed:-brak})" cmp -s "$tmp/A-snoozed.txt" "$tmp/B-snoozed.txt"
+b_filters="$(paste -sd ';' "$tmp/B-filters.txt")"
+check "filtr $FILTER z etykieta $LABEL po nazwie (po: ${b_filters:-brak})" cmp -s "$tmp/A-filters.txt" "$tmp/B-filters.txt"
 
 # j. Wynik.
 step "j. wynik"
 echo "  initial sync (login -> live): $(secs "$sync_ms")"
 if [ "$match_ms" -ge 0 ]; then match_txt="$(secs "$match_ms")"; else match_txt="brak zgodnosci w ${TIMEOUT} s"; fi
-echo "  restore -> live: $(secs "$live_ms"); restore -> INBOX zgodny z A i $LABEL na 2 watkach: $match_txt"
+echo "  restore -> live: $(secs "$live_ms"); restore -> INBOX zgodny z A, $LABEL na 2 watkach i snooze: $match_txt"
 echo "  calosc: $(secs $(($(now_ms) - t_all)))"
 if [ "$FAILS" -eq 0 ]; then
   echo "PASS"
