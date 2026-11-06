@@ -11,3 +11,5 @@ Format: [0000-template.md](0000-template.md). Zasady dodawania ADR: [CONTRIBUTIN
 | [0005](0005-imap-source-of-truth.md) | IMAP jako źródło prawdy; Silo jest klientem, nie serwerem | Przyjęty |
 | [0006](0006-go-imap-v2-spike.md) | go-imap/v2 jako klient IMAP: wyniki spike'a i zakres `imapx` | Przyjęty |
 | [0007](0007-bearer-tokens-for-native-clients.md) | Opaque bearer tokens dla klientów natywnych | Przyjęty |
+| [0008](0008-search-tokenizer-in-app.md) | Tokenizer wyszukiwania w aplikacji zamiast `to_tsvector(unaccent)` | Przyjęty |
+| [0009](0009-keyword-state-per-folder.md) | Stan keywordu etykiety per folder i limit liczony z `PERMANENTFLAGS` | Przyjęty |

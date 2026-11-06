@@ -4,7 +4,7 @@ Self-hosted **klient webowy poczty** (IMAP/SMTP) z UX współczesnego Gmaila: w�
 
 Silo **nie jest serwerem pocztowym**. Łączy się z istniejącym serwerem (docker-mailserver, Dovecot, Gmail IMAP, Office 365 itd.) przez IMAP i SMTP submission – tak jak Roundcube czy Thunderbird. Serwer IMAP pozostaje źródłem prawdy dla poczty. Szczegóły: [sekcja 1 planu](ARCHITECTURE_AND_PLAN.md#1-cel-i-zasady) i [ADR 0005](docs/adr/0005-imap-source-of-truth.md).
 
-> Status: Faza 3 zamknięta – działa klient webowy z układem Gmaila: czytanie, akcje z „Cofnij”, compose z draftami na serwerze, wysyłka z undo send. Brak wyszukiwania z operatorami, snooze, filtrów i wielu kont w UI (Fazy 4–5); szczegóły w sekcji [Stan: Faza 3](#stan-faza-3).
+> Status: Faza 4 zamknięta – klient webowy z układem Gmaila: wyszukiwanie ze składnią Gmaila, snooze, zaplanowana wysyłka, filtry, etykiety jako IMAP keywords, ustawienia, obrazy inline i miniatury, pełna tabela skrótów. Brak UI „Dodaj konto” i mapowania folderów, OAuth2 i wielu kont w UI (Faza 5); szczegóły w sekcji [Stan: Faza 4](#stan-faza-4).
 
 ## Repozytoria
 
@@ -66,7 +66,7 @@ Thunderbird (lub inny klient): serwer przychodzący IMAP `localhost`, port `1143
 
 ### Smoke e2e
 
-DoD Fazy 3 (UI, wysyłka, undo, drafty, offline, a11y) sprawdzają testy Playwright w `silo-web` (`npm run e2e`, opis w README `silo-web`); poniższy skrypt to szybki smoke API z Fazy 2.
+DoD Fazy 3 (UI, wysyłka, undo, drafty, offline, a11y) i Fazy 4 (wyszukiwanie, snooze, schedule send, filtry, etykiety jako keywords, ustawienia, skróty) sprawdzają testy Playwright w `silo-web` (`npm run e2e`, opis w README `silo-web`; `npm run e2e -- --grep-invert @slow` pomija testy czekające 2–4 min); poniższy skrypt to szybki smoke API z Fazy 2.
 
 Skrypt `scripts/e2e-smoke.sh` sprawdza na działającym stosie dev dwa punkty Definition of done Fazy 2:
 
@@ -84,6 +84,14 @@ Bez `jq` (parsowanie `grep`/`sed`), potrzebny tylko `curl` i `docker compose`. A
 ### Porty
 
 Domyślnie: Postgres `5432`, silo-server `8080`, silo-web `5173`, IMAP `1143`, SMTP `2525`, submission `1587`. Gdy któryś jest zajęty, zmień w `.env` (kopia `.env.example`) odpowiednio `SILO_DEV_PG_PORT`, `SILO_DEV_SERVER_PORT`, `SILO_DEV_WEB_PORT`, `SILO_DEV_IMAP_PORT`, `SILO_DEV_SMTP_PORT`, `SILO_DEV_SUBMISSION_PORT` i uruchom `scripts/dev-up.sh` ponownie. Skrypty działają w Git Bash (Windows) i bash (Linux/macOS).
+
+## Stan: Faza 4
+
+Działa (UI `silo-web` 0.3.0 na API `silo-server` 0.4.0), ponad Fazę 3: wyszukiwanie ze składnią Gmaila parsowane na serwerze (`from:`, `to:`, `subject:`, `has:attachment`, `is:`, `label:`, `in:`, daty, rozmiary, `OR`, `-`, nawiasy; tokenizer w aplikacji – [ADR 0008](docs/adr/0008-search-tokenizer-in-app.md)) z podpowiedziami (historia, kontakty, etykiety, operatory), chipami, wyszukiwaniem zaawansowanym i banerem indeksowania; snooze (folder `Snoozed` na serwerze, presety w strefie użytkownika, wybudzanie co 30 s, nowa wiadomość budzi wątek, lista Odłożone); zaplanowana wysyłka (lista Zaplanowane, wiadomość nie istnieje na serwerze przed czasem); filtry (CRUD, „Utwórz filtr z wyszukiwania”, nowe wiadomości przy ingest, „Zastosuj do istniejących”, przekazywanie); etykiety użytkownika jako IMAP keywords (drzewo, kolory, zagnieżdżanie, stan per folder `mirrored`/`local_only`/`partial`, limit 26 słów kluczowych maildir liczony przez Silo – [ADR 0009](docs/adr/0009-keyword-state-per-folder.md)); odbudowa cache konta (`resync rebuild`, `silo-server rebuild-cache`); ustawienia (`GET/PATCH /settings`: gęstość, okres undo send, strefa, podpis, skróty, powiadomienia desktop); obrazy inline (`cid:`) w compose, miniatury obrazów, przekazanie z załącznikami oryginału; komplet skrótów z planu 6.6 (`g l`, `g 1..9`, `n p l v b`, `Ctrl+Enter`). Notatki administratora (limit keywordów, `rebuild-cache`, folder `Snoozed`, reindeks po upgrade): [docs/admin](docs/admin/README.md).
+
+Pomiary e2e z 6.11.2026 (Windows 11, Docker Desktop, build produkcyjny przez `vite preview`, docker-mailserver 16): tag ustawiony drugim klientem IMAP (`UID STORE +FLAGS`) → etykieta na wierszu listy po 961–968 ms; etykieta z Silo jako keyword na serwerze w < 3 s; snooze „za minutę” → wiadomość w `Snoozed` na serwerze, poza INBOX, po czasie wybudzenia z powrotem w INBOX bez `\Seen` i na górze listy po 14,1–14,5 s (tick 30 s, próg 90 s); wiadomość zaplanowana ok. 2 min naprzód – przed czasem w żadnym folderze nadawcy ani w INBOX odbiorcy, dostarczona 4,4 s po czasie wysyłki (próg ±30 s); filtr `from:x → pomiń Odebrane + etykieta Y` – nowa wiadomość w Archive z keywordem Y, starsza po „Zastosuj”; wyszukiwanie z operatorami, podpowiedziami, chipami, wyszukiwaniem zaawansowanym i `422`; ustawienia po przeładowaniu, skróty wyłączone blokują `e`; komplet skrótów 6.6 (dwa scenariusze). Regresja Fazy 3 w tym samym przebiegu: `e` → wiersz poza DOM po 22,7 ms, Archive po 10,2 s (okno 10 s), draft w Drafts po 34,0 s, `syncNow` 78 ms, undo send – dostarczenie 0,5 s po oknie, 5000 wątków w 12,5 s z jednym long taskiem 54 ms, axe bez naruszeń.
+
+Nie działa jeszcze: ekran „Dodaj konto” i mapowanie folderów w UI (konto powstaje przy logowaniu; API serwera jest), wiele kont w UI, OAuth2, tryb Gmail – Faza 5; obsługa odbić (bounce/DSN), miniatury i przeglądarka PDF (PDF otwiera się/pobiera w nowej karcie), preset „Jutro po południu” w zaplanowanej wysyłce – później. Do ręcznego sprawdzenia w Thunderbirdzie: lista w [docs/history/FAZA4-NOTES.md](docs/history/FAZA4-NOTES.md) (sekcja „Do sprawdzenia ręcznie”).
 
 ## Stan: Faza 3
 
@@ -114,6 +122,8 @@ Nie działa jeszcze: interfejs użytkownika (`silo-web` ma tylko szkielet i klie
 - [ARCHITECTURE_AND_PLAN.md](ARCHITECTURE_AND_PLAN.md) – architektura i plan wdrożenia
 - [docs/adr/](docs/adr/README.md) – rekordy decyzji architektonicznych
 - [docs/compat-matrix.md](docs/compat-matrix.md) – macierz kompatybilności
+- [docs/admin/](docs/admin/README.md) – notatki dla administratora instancji
+- [docs/history/](docs/history/FAZA4-NOTES.md) – archiwum notatek koordynatora faz
 - [CONTRIBUTING.md](CONTRIBUTING.md) – konwencje i workflow dla wszystkich trzech repo
 
 ## Licencja

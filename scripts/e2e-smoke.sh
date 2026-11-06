@@ -10,6 +10,9 @@
 # Kod wyjscia: 0 = progi dotrzymane, 1 = przekroczony prog lub blad, 2 = stos niedostepny.
 # DoD Fazy 3 (UI, wysylka, undo, drafty, offline, a11y) sprawdza Playwright w silo-web: `npm run e2e`
 # (README silo-web, sekcja "End-to-end tests"); ten skrypt pozostaje szybkim smoke API z Fazy 2.
+# DoD Fazy 4 (wyszukiwanie, snooze, schedule send, filtry, etykiety jako keywords, ustawienia, skroty)
+# sprawdzaja pliki Playwright silo-web: e2e/{search,snooze,filters,schedule-send,labels-keywords,
+# settings,shortcuts}.e2e.ts (`npm run e2e -- --grep-invert @slow` bez testow czekajacych 2-4 min).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
