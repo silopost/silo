@@ -18,3 +18,4 @@ Format: [0000-template.md](0000-template.md). Zasady dodawania ADR: [CONTRIBUTIN
 | [0012](0012-s3-blobstore.md) | `S3Store` na minio-go | Przyjęty |
 | [0013](0013-oauth2-xoauth2.md) | OAuth2 (authorization code + PKCE) i XOAUTH2 dla Gmaila i Microsoft 365 | Przyjęty |
 | [0014](0014-metadata-backup-format.md) | Format backupu metadanych `silo-metadata` v1 | Przyjęty |
+| [0015](0015-i18n-typed-dictionaries.md) | Wielojęzyczny UI: angielski źródłowy, typowane słowniki, `settings.language` | Przyjęty |
