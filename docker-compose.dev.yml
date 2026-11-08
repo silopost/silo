@@ -89,6 +89,8 @@ services:
       - web_node_modules:/src/node_modules
     environment:
       VITE_API_PROXY: http://silo-server:8080
+      # bind mount z Windows nie przekazuje zdarzen plikowych: watcher Vite musi odpytywac
+      VITE_USE_POLLING: "1"
     ports: ["${SILO_DEV_WEB_PORT:-5173}:5173"]
 
 volumes:
