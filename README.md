@@ -118,7 +118,7 @@ The fine print:
 | [`silo-web`](https://github.com/silopost/silo-web) | AGPL-3.0 | React/TypeScript single-page app and PWA, consumer of the OpenAPI contract | `ghcr.io/silopost/silo-web` |
 | [`silo-mobile`](https://github.com/silopost/silo-mobile) | AGPL-3.0 | React Native/Expo app (Android; iOS later), thin client of the same API with bearer sign-in | `expo export` bundle in CI; APK via `expo prebuild` + Gradle (distribution not set up yet) |
 
-Current versions: `silo` 0.5.0, `silo-server` 0.5.0, `silo-web` 0.4.0, `silo-mobile` 0.1.0
+Current versions: `silo` 0.5.0, `silo-server` 0.6.0, `silo-web` 0.4.0, `silo-mobile` 0.1.0
 (unreleased). Which versions work together: [compatibility matrix](docs/compat-matrix.md).
 
 ## Requirements
@@ -298,7 +298,7 @@ The complete list of `silo-server` variables, with defaults and validation rules
 | `SILO_PUBLIC_URL` | `https://$SILO_DOMAIN` | Public URL. Must match the address in the browser (Origin check, `Secure` cookie, OAuth2 redirect). Change it only for another port or path. |
 | `SILO_SECRET_KEY` | – (required) | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts mailbox passwords, OAuth2 tokens and TOTP secrets. Keep a copy separate from backups. Empty stops start-up. |
 | `SILO_POSTGRES_PASSWORD` | – (required) | Postgres password inside the Compose network, without characters that need URL encoding (`openssl rand -hex 24`). Empty stops start-up. |
-| `SILO_SERVER_TAG` | `0.5.0` | Image tag of `ghcr.io/silopost/silo-server`. |
+| `SILO_SERVER_TAG` | `0.6.0` | Image tag of `ghcr.io/silopost/silo-server`. |
 | `SILO_WEB_TAG` | `0.4.0` | Image tag of `ghcr.io/silopost/silo-web`. |
 | `SILO_HTTP_PORT` / `SILO_HTTPS_PORT` | `80` / `443` | Host ports of Caddy (HTTPS also on UDP for HTTP/3). |
 | `SILO_NETWORK_SUBNET` | `172.29.250.0/24` | Fixed subnet of the Compose network (Caddy connects from it); change it on collision. |
