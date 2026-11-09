@@ -1,29 +1,29 @@
-# 0004. huma + chi i OpenAPI generowany z kodu
+# 0004. huma + chi and OpenAPI generated from code
 
-- **Status:** Przyjęty
-- **Data:** 2026-11-05
-- **Dotyczy:** silo-server, silo-web
+- **Status:** Accepted
+- **Date:** 2026-11-05
+- **Applies to:** silo-server, silo-web
 
-## Kontekst
+## Context
 
-`silo-server` i `silo-web` są w osobnych repozytoriach z niezależnym SemVer ([plan 2.4](../../ARCHITECTURE_AND_PLAN.md#24-wersjonowanie-i-kontrakt)). Potrzebny jest jeden, wiarygodny kontrakt API. Ręcznie utrzymywana specyfikacja obok kodu zawsze się rozjeżdża.
+`silo-server` and `silo-web` live in separate repositories with independent SemVer. A single, trustworthy API contract is needed. A specification maintained by hand next to the code always drifts.
 
-## Decyzja
+## Decision
 
-- Backend: `github.com/danielgtaylor/huma/v2` z adapterem `humachi` nad routerem `chi`. chi zostaje routerem i miejscem middleware (auth, CSRF, logowanie, recover).
-- **OpenAPI 3.1 jest generowany ze structów Go**; huma waliduje też requesty. `cmd/silo-openapi` zapisuje `api/openapi.yaml` (bez DB), plik jest commitowany, a CI failuje, gdy wygenerowany plik różni się od zacommitowanego.
-- Frontend: `openapi-typescript` generuje `src/api/schema.d.ts` z `openapi.yaml` pobranego z tagu serwera (`npm run gen:api -- --server-ref vX.Y.Z`); klient HTTP to `openapi-fetch`. CI frontendu sprawdza zgodność z zadeklarowanym `server-ref`.
-- `/api/v1` jest addytywne w ramach 1.x; przed 1.0 dopuszczamy zmiany łamiące, opisane w `docs/compat-matrix.md`. `GET /api/v1/meta` zwraca m.in. `serverVersion`, `apiVersion`, `minWebVersion`.
+- Backend: `github.com/danielgtaylor/huma/v2` with the `humachi` adapter on top of the `chi` router. chi remains the router and the place for middleware (auth, CSRF, logging, recover).
+- **OpenAPI 3.1 is generated from Go structs**; huma also validates requests. `cmd/silo-openapi` writes `api/openapi.yaml` (no database needed), the file is committed, and CI fails when the generated file differs from the committed one.
+- Frontend: `openapi-typescript` generates `src/api/schema.d.ts` from the `openapi.yaml` of a server tag (`npm run gen:api -- --server-ref vX.Y.Z`); the HTTP client is `openapi-fetch`. The frontend CI checks consistency with the declared `server-ref`.
+- `/api/v1` is additive within 1.x; before 1.0 breaking changes are allowed and recorded in `docs/compat-matrix.md`. `GET /api/v1/meta` returns, among others, `serverVersion`, `apiVersion` and `minWebVersion`.
 
-## Konsekwencje
+## Consequences
 
-- Kontrakt zawsze zgodny z kodem; typy TypeScript wynikają z tego samego źródła.
-- Zmiana API w serwerze wymusza świadomą aktualizację `server-ref` w web.
-- Zależność od huma i jego konwencji definiowania operacji.
-- Za stary frontend wykrywany przez `minWebVersion`; UI pokazuje baner „Dostępna nowa wersja”.
+- The contract always matches the code; the TypeScript types come from the same source.
+- An API change in the server forces a deliberate update of `server-ref` in the web client.
+- A dependency on huma and its conventions for defining operations.
+- A frontend that is too old is detected through `minWebVersion`; the UI shows a "New version available" banner.
 
-## Alternatywy
+## Alternatives
 
-- **Spec-first (ręczny YAML + oapi-codegen):** dobra kontrola, ale ryzyko rozjazdu spec/implementacja i więcej pracy ręcznej.
-- **swaggo (komentarze w kodzie):** słabsza walidacja, OpenAPI 2/3.0, komentarze łatwo się rozjeżdżają.
-- **gRPC/Connect:** gorzej pasuje do SSE, cookie sesyjnych i prostego klienta przeglądarkowego.
+- **Spec-first (hand-written YAML + oapi-codegen):** good control, but a risk of spec/implementation drift and more manual work.
+- **swaggo (comments in code):** weaker validation, OpenAPI 2/3.0, and comments drift easily.
+- **gRPC/Connect:** fits SSE, session cookies and a simple browser client poorly.

@@ -1,35 +1,35 @@
-# 0011. Tryb `local` z hasłem Silo i własnym TOTP
+# 0011. Mode `local` with a Silo password and built-in TOTP
 
-- **Status:** Przyjęty
-- **Data:** 2026-11-06
-- **Dotyczy:** silo-server, silo-web
+- **Status:** Accepted
+- **Date:** 2026-11-06
+- **Applies to:** silo-server, silo-web
 
-## Kontekst
+## Context
 
-Tryb `imap` ([plan 3.15](../../ARCHITECTURE_AND_PLAN.md#315-konta-uwierzytelnianie-i-sekrety)) loguje danymi skrzynki na serwerze domyślnym – wygodny dla instancji „jeden serwer poczty”, ale bezużyteczny, gdy użytkownicy mają skrzynki u różnych dostawców (Gmail przez OAuth2, Microsoft 365, hosting). Faza 5 potrzebuje użytkowników Silo niezależnych od skrzynek, zakładanych przez administratora, z drugim składnikiem i panelem administracyjnym. Silo nie powinno przy tym stać się wyrocznią do odgadywania, które konta istnieją, ani przyjmować ponownie przechwyconego kodu jednorazowego.
+Mode `imap` signs users in with their mailbox credentials on the default server – convenient for a "one mail server" instance, but useless when users have mailboxes with different providers (Gmail through OAuth2, Microsoft 365, hosting). Phase 5 needs Silo users independent of mailboxes, created by an administrator, with a second factor and an admin panel. At the same time Silo must not become an oracle for guessing which accounts exist, nor accept a replayed one-time code.
 
-## Decyzja
+## Decision
 
-`SILO_AUTH_MODE=local`: użytkownicy Silo z własnym hasłem (argon2id), zakładani przez administratora (`silo-server user add`, `POST /admin/users`); bez samodzielnej rejestracji. Drugi składnik to **TOTP RFC 6238 zaimplementowany w Silo** (`internal/totp`, SHA1, 30 s, 6 cyfr, ±1 krok).
+`SILO_AUTH_MODE=local`: Silo users with their own password (argon2id), created by an administrator (`silo-server user add`, `POST /admin/users`); no self-registration. The second factor is **TOTP (RFC 6238) implemented in Silo** (`internal/totp`, SHA1, 30 s, 6 digits, ±1 step).
 
-- **Stały czas logowania:** nieznany, wyłączony użytkownik i złe hasło weryfikowane są wobec stałego fikcyjnego hasha argon2id, z tą samą minimalną długością odpowiedzi; zawsze `401 invalid_credentials`.
-- **Kolejność czynników:** `401 totp_required` dopiero po poprawnym haśle (bez kodu); zły kod → `401 invalid_credentials`. Klient wysyła ponownie `POST /session` z `totpCode`.
-- **Sekret TOTP** zaszyfrowany AES-256-GCM kluczem `SILO_SECRET_KEY` (AAD = `users.id`), obejmuje go `rotate-secrets`. **Anty-replay:** `users.totp_last_step` – kod z kroku czasowego już użytego jest odrzucany. **Kody zapasowe:** 10 jednorazowych, w bazie tylko `sha256`.
-- **Ponowne uwierzytelnienie** zalogowanego (zmiana hasła, wyłączenie TOTP, nowe kody zapasowe) przy złym haśle lub kodzie → `403 invalid_credentials` (401 klient traktuje jako „wylogowany”).
-- **Wyłączenie użytkownika przez admina:** sesje przestają działać od razu (także strumień SSE – `session.expired`), konta przechodzą w `sync_state='disabled'` (sync staje), odblokowanie wznawia połączenia. Admin nie może wyłączyć, odebrać sobie uprawnień ani usunąć siebie (`409 admin_self_change`).
-- W trybie `local` użytkownik dodaje skrzynki sam (`POST /accounts`, autokonfiguracja, OAuth2); host inny niż domyślny zawsze przechodzi walidację anty-SSRF (`internal/netx`).
+- **Constant sign-in time:** an unknown user, a disabled user and a wrong password are verified against a constant dummy argon2id hash, with the same minimum response time; always `401 invalid_credentials`.
+- **Factor order:** `401 totp_required` only after a correct password (without a code); a wrong code → `401 invalid_credentials`. The client sends `POST /session` again with `totpCode`.
+- **The TOTP secret** is encrypted with AES-256-GCM using `SILO_SECRET_KEY` (AAD = `users.id`) and is covered by `rotate-secrets`. **Anti-replay:** `users.totp_last_step` – a code from an already used time step is rejected. **Backup codes:** 10 one-time codes, only their `sha256` in the database.
+- **Re-authentication** of a signed-in user (password change, disabling TOTP, new backup codes) with a wrong password or code → `403 invalid_credentials` (the client treats 401 as "signed out").
+- **Disabling a user by an admin:** sessions stop working immediately (including the SSE stream – `session.expired`), accounts switch to `sync_state='disabled'` (sync stops), and re-enabling resumes connections. An admin cannot disable, demote or delete themselves (`409 admin_self_change`).
+- In mode `local` users add mailboxes themselves (`POST /accounts`, autoconfiguration, OAuth2); a host other than the default one always goes through the anti-SSRF validation (`internal/netx`).
 
-## Konsekwencje
+## Consequences
 
-- Instancja obsługuje skrzynki u wielu dostawców; panel admina (użytkownicy, stany kont, joby `dead`) działa w obu trybach.
-- Brak zależności od zewnętrznej biblioteki TOTP i od zewnętrznego IdP; koszt: własny kod kryptograficzny (sprawdzony wektorami RFC 6238).
-- Zgubione urządzenie bez kodów zapasowych wymaga admina (`POST /admin/users/{id}/totp/reset`).
-- Kod przechwycony w tym samym kroku czasowym jest bezużyteczny po pierwszym użyciu; atak online ogranicza rate limit (`SILO_RATE_LIMIT_AUTH`, seclog `totp_failed` dla fail2ban).
-- W trybie `imap` endpointy `/totp/*` i `/session/password` odpowiadają `409 not_available`.
+- An instance serves mailboxes with many providers; the admin panel (users, account states, `dead` jobs) works in both modes.
+- No dependency on an external TOTP library or an external IdP; the cost is our own cryptographic code (checked against the RFC 6238 test vectors).
+- A lost device without backup codes requires an admin (`POST /admin/users/{id}/totp/reset`).
+- A code intercepted within the same time step is useless after its first use; online attacks are limited by the rate limit (`SILO_RATE_LIMIT_AUTH`, seclog `totp_failed` for fail2ban).
+- In mode `imap` the `/totp/*` and `/session/password` endpoints answer `409 not_available`.
 
-## Alternatywy
+## Alternatives
 
-- **OIDC / zewnętrzny IdP (Keycloak, Authentik):** naturalne dla organizacji, ale wymaga dodatkowej usługi, której mała instancja nie ma; odłożone (możliwe jako trzeci tryb).
-- **WebAuthn / passkeys:** silniejsze od TOTP, ale wymaga rejestracji urządzeń, osobnego przepływu dla `silo-mobile` i HTTPS na każdej instancji testowej; odłożone do 1.x.
-- **Biblioteka `pquerna/otp`:** gotowa, ale nie rozwiązuje anty-replay ani kodów zapasowych (stan po stronie aplikacji) – zysk niewielki wobec ~100 linii kodu z wektorami testowymi.
-- **TOTP także w trybie `imap`:** hasło i tak weryfikuje serwer poczty; drugi składnik Silo nie chroni skrzynki przed innymi klientami IMAP. Odrzucone.
+- **OIDC / an external IdP (Keycloak, Authentik):** natural for organizations, but requires an additional service that a small instance does not have; postponed (possible as a third mode).
+- **WebAuthn / passkeys:** stronger than TOTP, but requires device registration, a separate flow for `silo-mobile` and HTTPS on every test instance; postponed to 1.x.
+- **The `pquerna/otp` library:** ready-made, but does not solve anti-replay or backup codes (state on the application side) – little gain compared to ~100 lines of code with test vectors.
+- **TOTP in mode `imap` too:** the password is verified by the mail server anyway; a Silo second factor does not protect the mailbox from other IMAP clients. Rejected.

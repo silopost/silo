@@ -1,32 +1,32 @@
-# 0008. Tokenizer wyszukiwania w aplikacji zamiast `to_tsvector(unaccent)`
+# 0008. Search tokenizer in the application instead of `to_tsvector(unaccent)`
 
-- **Status:** Przyjęty
-- **Data:** 2026-11-06
-- **Dotyczy:** silo-server
+- **Status:** Accepted
+- **Date:** 2026-11-06
+- **Applies to:** silo-server
 
-## Kontekst
+## Context
 
-Wyszukiwarka Fazy 4 ([plan 3.12](../../ARCHITECTURE_AND_PLAN.md#312-wyszukiwanie)) ma dwa wykonawcze odbicia tego samego zapytania w składni Gmaila: SQL po `messages.search_tsv` (lista wyników, „Zastosuj do istniejących” filtra) i matcher w pamięci (`search.Matcher`, filtry przy ingest – [plan 3.11](../../ARCHITECTURE_AND_PLAN.md#311-filtry)). DoD wymaga, żeby oba dawały ten sam zbiór (property test). Plan zakładał `to_tsvector('simple', unaccent(...))` po stronie Postgresa i `to_tsquery('simple', unaccent($n) || ':*')` w zapytaniu. Wtedy podział na słowa i zwijanie diakrytyków robi Postgres, a matcher w Go musiałby to odtworzyć bit w bit (parser `simple` traktuje inaczej adresy e-mail, URL-e, liczby z kropką i łączniki). Rozbieżności wychodziłyby jako filtr, który „nie działa” na nowej wiadomości, a działa po „Zastosuj”. Do tego `unaccent` jest rozszerzeniem z własnym słownikiem, zależnym od wersji obrazu Postgresa.
+The phase 4 search has two executable forms of the same query in Gmail syntax: SQL over `messages.search_tsv` (the result list, a filter's "Apply to existing") and an in-memory matcher (`search.Matcher`, filters at ingest). The definition of done requires both to produce the same set (property test). The design assumed `to_tsvector('simple', unaccent(...))` on the Postgres side and `to_tsquery('simple', unaccent($n) || ':*')` in the query. Then Postgres does word splitting and diacritic folding, and the Go matcher would have to reproduce it bit for bit (the `simple` parser treats email addresses, URLs, numbers with dots and hyphens differently). Discrepancies would show up as a filter that "does not work" on a new message but works after "Apply". On top of that, `unaccent` is an extension with its own dictionary, dependent on the version of the Postgres image.
 
-## Decyzja
+## Decision
 
-`search_tsv` i literały zapytań buduje **jeden tokenizer w Go** (`internal/search`), a Postgres dostaje gotowe leksemy.
+`search_tsv` and the query literals are built by **one tokenizer in Go** (`internal/search`), and Postgres receives ready-made lexemes.
 
-- **Tokenizacja:** ciągi liter i cyfr (Unicode), małe litery, zwijanie diakrytyków w Go (`ą` → `a`, `ł` → `l`), bez stemmingu. Adresy e-mail i domeny dzielą się na słowa (`firma` trafia `jan@firma.pl`).
-- **Indeks:** wiersz `messages.search_tsv` to literał `tsvector` z jawnymi pozycjami i wagami (temat A; nazwy i adresy from/to/cc oraz nazwy załączników B; `body_text` do 512 KB C), zapisywany przez aplikację (`mail.ReindexSearch`).
-- **Zapytanie:** literał `::tsquery` – słowo = prefiks (`:*`), kilka tokenów jednego słowa lub fraza = `<->`, `subject:` = waga A po `search_tsv`. Bez `to_tsvector`/`unaccent` w SQL.
-- **Wersja tokenizera:** `messages.search_ver` (migracja `000006_search_index`) i stała `mail.SearchVersion`; wiersze ze starszą wersją są przeindeksowywane w tle przy starcie (paczki po 500).
+- **Tokenization:** runs of letters and digits (Unicode), lowercase, diacritic folding in Go (`ą` → `a`, `ł` → `l`), no stemming. Email addresses and domains are split into words (`firma` matches `jan@firma.pl`).
+- **Index:** the `messages.search_tsv` value is a `tsvector` literal with explicit positions and weights (subject A; names and addresses in from/to/cc and attachment names B; `body_text` up to 512 KB C), written by the application (`mail.ReindexSearch`).
+- **Query:** a `::tsquery` literal – a word = a prefix (`:*`), several tokens of one word or a phrase = `<->`, `subject:` = weight A over `search_tsv`. No `to_tsvector`/`unaccent` in SQL.
+- **Tokenizer version:** `messages.search_ver` (migration `000006_search_index`) and the constant `mail.SearchVersion`; rows with an older version are reindexed in the background at start-up (batches of 500).
 
-## Konsekwencje
+## Consequences
 
-- SQL i matcher dzielą tekst identycznie – property test (240 wiadomości, ~120 zapytań) porównuje oba zbiory.
-- Zmiana tokenizera = podbicie `SearchVersion` i reindeks w tle po upgrade; do jego końca wyszukiwanie po starszych wiadomościach jest niepełne (odpowiedź niesie `indexing`). Opisane w `docs/admin`.
-- Nie potrzebujemy rozszerzenia `unaccent` ani indeksów wyrażeniowych po `subject` (temat to waga A tego samego `tsvector`).
-- Zwijanie diakrytyków i reguły podziału są nasze: każda poprawka (np. inne pismo, apostrofy) wymaga testu w `internal/search` i reindeksu.
-- Stemming per język (decyzja odłożona nr 7) można dodać tylko w Go, z kolejną wersją tokenizera.
+- SQL and the matcher split text identically – a property test (240 messages, ~120 queries) compares both sets.
+- Changing the tokenizer = bumping `SearchVersion` and a background reindex after upgrade; until it finishes, search over older messages is incomplete (the response carries `indexing`). Described in `docs/admin`.
+- We need neither the `unaccent` extension nor expression indexes on `subject` (the subject is weight A of the same `tsvector`).
+- Diacritic folding and splitting rules are ours: every fix (e.g. another script, apostrophes) requires a test in `internal/search` and a reindex.
+- Per-language stemming (a postponed decision) can only be added in Go, with a new tokenizer version.
 
-## Alternatywy
+## Alternatives
 
-- **`to_tsvector('simple', unaccent(...))` w Postgresie (plan pierwotny):** jeden tokenizer w bazie, ale matcher filtrów musiałby go emulować albo każdą nową wiadomość sprawdzać zapytaniem SQL (koszt przy ingest, filtr przed zapisem wiadomości niemożliwy). Odrzucone z powodu rozbieżności SQL ↔ matcher.
-- **Matcher filtrów przez SQL po zapisie wiadomości:** jedna implementacja, ale zapytanie na każdą nową wiadomość i każdy filtr oraz brak ewaluacji na samych nagłówkach przed pobraniem treści. Odrzucone.
-- **Zewnętrzny silnik (Meilisearch, Tantivy):** nowa usługa w compose i synchronizacja indeksu – sprzeczne z zasadą „Postgres + jeden binarny serwer”. Odrzucone.
+- **`to_tsvector('simple', unaccent(...))` in Postgres (the original design):** one tokenizer in the database, but the filter matcher would have to emulate it, or check every new message with an SQL query (a cost at ingest, and filtering before the message is stored is impossible). Rejected because of the SQL ↔ matcher discrepancy.
+- **Filter matching through SQL after the message is stored:** one implementation, but a query for every new message and every filter, and no evaluation on headers alone before the body is fetched. Rejected.
+- **An external engine (Meilisearch, Tantivy):** a new service in compose and index synchronization – contrary to the "Postgres + a single server binary" principle. Rejected.

@@ -1,33 +1,33 @@
-# 0001. SSE zamiast WebSocket dla real-time
+# 0001. SSE instead of WebSocket for real time
 
-- **Status:** Przyjęty
-- **Data:** 2026-11-05
-- **Dotyczy:** silo-server, silo-web
+- **Status:** Accepted
+- **Date:** 2026-11-05
+- **Applies to:** silo-server, silo-web
 
-## Kontekst
+## Context
 
-Przeglądarka musi widzieć nową pocztę i zmiany stanu (z sync IMAP oraz z innych kart) w mniej niż 5 s, bez odświeżania ([plan 1, zasada 3](../../ARCHITECTURE_AND_PLAN.md#1-cel-i-zasady)). Komunikacja real-time jest jednokierunkowa: serwer powiadamia klienta. Akcje użytkownika idą REST-em z walidacją, idempotencją i kodami błędów. Całość ma działać za Caddy w pojedynczym binarnym backendzie.
+The browser must see new mail and state changes (from IMAP sync and from other tabs) in under 5 s, without a reload. Real-time communication is one-way: the server notifies the client. User actions go over REST with validation, idempotency and error codes. Everything has to work behind Caddy with a single backend binary.
 
-## Decyzja
+## Decision
 
-Real-time realizujemy przez **Server-Sent Events**: `GET /api/v1/events` (`text/event-stream`), opisane w [planie 3.14](../../ARCHITECTURE_AND_PLAN.md#314-real-time-sse).
+Real time is implemented with **Server-Sent Events**: `GET /api/v1/events` (`text/event-stream`).
 
-- Hub w pamięci per użytkownik, kanał per klient z buforem 64; przepełnienie zamyka połączenie (reconnect + replay).
-- Zdarzenia w tabeli `events` z `seq` jako `id:` SSE i retencją 24 h; reconnect z `Last-Event-ID` odtwarza zdarzenia, zbyt stary `seq` daje `resync`.
-- Heartbeat `: ping` co 25 s; Caddy z `flush_interval -1`.
-- Fallback: po 3 nieudanych połączeniach `EventSource` klient przechodzi na `GET /api/v1/events/poll?after=<seq>` co 15 s i okresowo próbuje wrócić do SSE.
-- Zdarzenia z sync i z API/ops publikowane przez `tx.AfterCommit`, więc klient nie rozróżnia źródła zmiany.
+- An in-memory hub per user, a channel per client with a buffer of 64; overflow closes the connection (reconnect + replay).
+- Events are stored in the `events` table with `seq` as the SSE `id:` and a 24 h retention; a reconnect with `Last-Event-ID` replays events, and a `seq` that is too old yields `resync`.
+- A `: ping` heartbeat every 25 s; Caddy with `flush_interval -1`.
+- Fallback: after 3 failed `EventSource` connections the client switches to `GET /api/v1/events/poll?after=<seq>` every 15 s and periodically tries to return to SSE.
+- Events from sync and from the API/ops are published through `tx.AfterCommit`, so the client does not distinguish the source of a change.
 
-## Konsekwencje
+## Consequences
 
-- Proste: zwykłe HTTP/2, cookie sesyjne działa automatycznie, reconnect i `Last-Event-ID` zapewnia przeglądarka, implementacja to rzędu 100 linii Go.
-- Brak kanału klient → serwer; nie jest potrzebny, bo akcje to REST.
-- Wymaga poprawnej konfiguracji proxy (brak buforowania).
-- Utrzymujemy tabelę `events` i job `events_prune`.
-- Pollingowy fallback to dodatkowy kod po stronie klienta i serwera.
+- Simple: plain HTTP/2, the session cookie works automatically, the browser provides reconnects and `Last-Event-ID`, and the implementation is on the order of 100 lines of Go.
+- No client → server channel; none is needed, because actions are REST.
+- Requires a correct proxy configuration (no buffering).
+- We maintain the `events` table and the `events_prune` job.
+- The polling fallback is additional code on both the client and the server.
 
-## Alternatywy
+## Alternatives
 
-- **WebSocket:** dwukierunkowy, ale niepotrzebny; wymaga własnego reconnectu, replay i uwierzytelniania upgrade'u, a akcje i tak chcemy mieć w REST.
-- **Long polling:** działa wszędzie, lecz większy narzut i opóźnienia; zostaje tylko jako fallback.
-- **Sam polling:** nie spełnia budżetu < 5 s bez nadmiernego obciążenia.
+- **WebSocket:** bidirectional, but not needed; requires our own reconnect, replay and upgrade authentication, and we want actions in REST anyway.
+- **Long polling:** works everywhere, but has more overhead and latency; kept only as the fallback.
+- **Plain polling:** does not meet the < 5 s budget without excessive load.

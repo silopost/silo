@@ -1,31 +1,31 @@
-# 0012. `S3Store` na minio-go
+# 0012. `S3Store` on minio-go
 
-- **Status:** Przyjęty
-- **Data:** 2026-11-06
-- **Dotyczy:** silo-server
+- **Status:** Accepted
+- **Date:** 2026-11-06
+- **Applies to:** silo-server
 
-## Kontekst
+## Context
 
-Bloby (surowe wiadomości, załączniki, uploady draftów, miniatury) są adresowane treścią i niemutowalne ([plan 3.16](../../ARCHITECTURE_AND_PLAN.md#316-blobstore)). `FSStore` wymaga wolumenu lokalnego; instancje na hostingu z magazynem obiektowym (MinIO obok compose, AWS S3, Backblaze B2, Wasabi) chcą trzymać bloby poza dyskiem serwera. Klucz bloba to `sha256` treści, więc musi być znany przed zapisem obiektu.
+Blobs (raw messages, attachments, draft uploads, thumbnails) are content-addressed and immutable. `FSStore` requires a local volume; instances on hosting with object storage (MinIO next to compose, AWS S3, Backblaze B2, Wasabi) want to keep blobs off the server's disk. The blob key is the `sha256` of the content, so it must be known before the object is written.
 
-## Decyzja
+## Decision
 
-`SILO_BLOB_BACKEND=s3` wybiera `S3Store` oparty na `github.com/minio/minio-go/v7`.
+`SILO_BLOB_BACKEND=s3` selects `S3Store`, based on `github.com/minio/minio-go/v7`.
 
-- Klucze `<SILO_BLOB_S3_PREFIX>/ab/cd/<sha256>` – ten sam układ co `FSStore`, dedup przez content-addressing.
-- `Put` najpierw **spoolowanie do pliku tymczasowego** z liczeniem `sha256`, potem `PutObject` ze znanym rozmiarem; serwer potrzebuje miejsca tymczasowego na największy blob.
-- **Brak automatycznego tworzenia bucketu:** `serve` sprawdza istnienie bucketu przy starcie i kończy się błędem konfiguracji; uprawnienia i polityki bucketu należą do administratora.
-- Konfiguracja `SILO_BLOB_S3_*` (endpoint, bucket, klucze, region, prefiks, TLS, path-style dla MinIO).
-- Testy integracyjne na obrazie MinIO przez testcontainers; domyślny obraz `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z` (nadpisanie `SILO_TEST_MINIO_IMAGE`), bo `minio/minio` z Docker Hub i `quay.io/minio/minio` były niedostępne z maszyny deweloperskiej (odmowa pobrania).
+- Keys `<SILO_BLOB_S3_PREFIX>/ab/cd/<sha256>` – the same layout as `FSStore`, deduplication through content addressing.
+- `Put` first **spools to a temporary file** while computing the `sha256`, then calls `PutObject` with a known size; the server needs temporary space for the largest blob.
+- **No automatic bucket creation:** `serve` checks that the bucket exists at start-up and exits with a configuration error; bucket permissions and policies belong to the administrator.
+- Configuration through `SILO_BLOB_S3_*` (endpoint, bucket, keys, region, prefix, TLS, path-style for MinIO).
+- Integration tests on a MinIO image through testcontainers; the default image is `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z` (override with `SILO_TEST_MINIO_IMAGE`), because `minio/minio` from Docker Hub and `quay.io/minio/minio` were unavailable from the development machine (pulls refused).
 
-## Konsekwencje
+## Consequences
 
-- Bloby można trzymać poza hostem; backup `full` obejmuje wtedy tylko bazę – bucket archiwizuje się narzędziami dostawcy (wersjonowanie, replikacja).
-- Zmiana backendu nie przenosi blobów: mirror to cache (`rebuild-cache` pobierze ponownie), bloby `local` (uploady, drafty, wiadomości zaplanowane) trzeba skopiować ręcznie (`docs/admin`).
-- Zależność od minio-go (podbite zależności pośrednie); obraz testowy MinIO z mirrora ghcr to ryzyko łańcucha dostaw w CI – do zastąpienia mirrorem organizacji.
+- Blobs can be kept off the host; the `full` backup then covers only the database – the bucket is archived with the provider's tools (versioning, replication).
+- Changing the backend does not move blobs: the mirror is a cache (`rebuild-cache` fetches it again), while `local` blobs (uploads, drafts, scheduled messages) have to be copied by hand (`docs/admin`).
+- A dependency on minio-go (bumped indirect dependencies); a MinIO test image from a ghcr mirror is a supply-chain risk in CI – to be replaced with an organization mirror.
 
-## Alternatywy
+## Alternatives
 
-- **aws-sdk-go-v2:** pełne S3 AWS, ale duży zestaw modułów i wolniejsza kompilacja; zgodność z MinIO i innymi dostawcami S3 przez opcje endpointu/path-style podobna. Odrzucone ze względu na rozmiar.
-- **Własny klient S3 (podpis SigV4 na `net/http`):** mało kodu na `Put`/`Get`/`Delete`, ale podpisy, multipart i błędy dostawców to źródło trudnych błędów. Odrzucone.
-- **Zapis strumieniowy bez spoolowania (multipart pod kluczem tymczasowym + server-side copy):** oszczędza dysk, ale podwaja operacje i zostawia porzucone obiekty przy awarii. Odrzucone na 1.0.
+- **aws-sdk-go-v2:** full AWS S3, but a large set of modules and slower compilation; compatibility with MinIO and other S3 providers through endpoint/path-style options is similar. Rejected because of its size.
+- **Our own S3 client (SigV4 signing on `net/http`):** little code for `Put`/`Get`/`Delete`, but signatures, multipart and provider errors are a source of hard bugs. Rejected.
+- **Streaming writes without spooling (multipart under a temporary key + server-side copy):** saves disk, but doubles the operations and leaves abandoned objects on failure. Rejected for 1.0.

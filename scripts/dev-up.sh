@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Uruchamia stos dev (docker-compose.dev.yml) i zaklada konta testowe w docker-mailserver.
-# Uzycie: scripts/dev-up.sh [usluga ...]   (domyslnie wszystkie; np. `dev-up.sh postgres mailserver`)
-# Idempotentny: kolejne uruchomienia nic nie psuja.
+# Starts the dev stack (docker-compose.dev.yml) and creates the test accounts in docker-mailserver.
+# Usage: scripts/dev-up.sh [service ...]   (default all; e.g. `dev-up.sh postgres mailserver`)
+# Idempotent: later runs break nothing.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,7 +34,7 @@ if [ ! -f .env ]; then
   echo "Utworzono .env z .env.example (zmien SILO_DEV_*_PORT, gdy porty sa zajete)."
 fi
 
-# Zmienne z .env tylko do wypisania adresow (compose czyta .env sam).
+# Variables from .env only for printing the addresses (compose reads .env itself).
 set -a
 # shellcheck disable=SC1091
 . ./.env
@@ -42,7 +42,7 @@ set +a
 
 "${COMPOSE[@]}" up -d --build "${services[@]}"
 
-# Czekamy na mailserver tylko, gdy jest wsrod uruchamianych uslug.
+# Wait for the mailserver only when it is among the services being started.
 want_mail=1
 if [ ${#services[@]} -gt 0 ]; then
   want_mail=0

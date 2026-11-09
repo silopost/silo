@@ -1,7 +1,7 @@
-# Osobny stos do testu backupu i odtwarzania (DoD Fazy 5): scripts/e2e-backup-restore.sh.
-# Wlasny projekt (silo-bt), wlasne wolumeny i porty hosta: nie koliduje ze stosem dev.
-# silo-server w obrazie produkcyjnym (--target prod, distroless, nonroot), bez silo-web.
-# Wymaga repo-rodzenstwa ../silo-server.
+# A separate stack for the backup and restore test (phase 5 definition of done): scripts/e2e-backup-restore.sh.
+# Its own project (silo-bt), volumes and host ports: it does not collide with the dev stack.
+# silo-server in the production image (--target prod, distroless, nonroot), without silo-web.
+# Requires the sibling repository ../silo-server.
 name: silo-bt
 
 services:
@@ -9,19 +9,19 @@ services:
     image: postgres:17
     environment:
       POSTGRES_USER: silo
-      POSTGRES_PASSWORD: silo # tylko test
+      POSTGRES_PASSWORD: silo # test only
       POSTGRES_DB: silo
     ports: ["${SILO_BT_PG_PORT:-15432}:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
-      # -h 127.0.0.1: tymczasowy serwer z etapu initdb slucha tylko na sockecie, wiec nie jest "gotowy"
+      # -h 127.0.0.1: the temporary server of the initdb stage listens only on the socket, so it is not "ready"
       test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "silo", "-d", "silo"]
       interval: 2s
       timeout: 3s
       retries: 30
 
-  # Serwer poczty jak w dev (ta sama konfiguracja i konta dev1-3@silo.test), wlasny wolumen.
-  # W tescie odgrywa role zewnetrznego serwera IMAP: jego wolumen przezywa "utrate" Silo.
+  # Mail server as in dev (the same configuration and accounts dev1-3@silo.test), its own volume.
+  # In the test it plays the role of the external IMAP server: its volume survives the "loss" of Silo.
   mailserver:
     image: ghcr.io/docker-mailserver/docker-mailserver:16
     hostname: mail.silo.test
@@ -44,7 +44,7 @@ services:
       - "${SILO_BT_IMAP_PORT:-11143}:143"
       - "${SILO_BT_SUBMISSION_PORT:-11587}:587"
 
-  # Obraz prod dziala jako nonroot (65532): nowy wolumen blobow trzeba mu oddac na wlasnosc.
+  # The prod image runs as nonroot (65532): a new blob volume has to be handed over to it.
   blobs-init:
     image: alpine:3.22
     command: ["chown", "-R", "65532:65532", "/data/blobs"]
@@ -61,7 +61,7 @@ services:
       SILO_LOG_LEVEL: info
       SILO_DATABASE_URL: postgres://silo:silo@postgres:5432/silo?sslmode=disable
       SILO_PUBLIC_URL: http://localhost:${SILO_BT_SERVER_PORT:-18080}
-      SILO_SECRET_KEY: ZGV2LW9ubHktZGV2LW9ubHktZGV2LW9ubHktZGV2MzI= # 32 B base64, WYLACZNIE test
+      SILO_SECRET_KEY: ZGV2LW9ubHktZGV2LW9ubHktZGV2LW9ubHktZGV2MzI= # 32 B base64, test ONLY
       SILO_AUTH_MODE: imap
       SILO_DEFAULT_IMAP_HOST: mailserver
       SILO_DEFAULT_IMAP_PORT: "143"
@@ -70,8 +70,8 @@ services:
       SILO_DEFAULT_SMTP_PORT: "587"
       SILO_DEFAULT_SMTP_TLS: none
       SILO_ALLOW_INSECURE_TRANSPORT: "true"
-      SILO_UNDO_WINDOW: 1s # operacje trafiaja na serwer IMAP od razu, backup ich nie gubi
-    restart: on-failure # jak w produkcji: chwilowy brak bazy nie konczy stosu
+      SILO_UNDO_WINDOW: 1s # operations reach the IMAP server right away, so the backup does not lose them
+    restart: on-failure # as in production: a temporarily missing database does not stop the stack
     ports: ["${SILO_BT_SERVER_PORT:-18080}:8080"]
     depends_on:
       postgres:

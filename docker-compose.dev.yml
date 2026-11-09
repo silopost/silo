@@ -1,11 +1,10 @@
-# Stos dev. Wymaga repo-rodzenstwa: ../silo-server i ../silo-web.
-# Szkic docelowy: ARCHITECTURE_AND_PLAN.md, sekcja 2.1.
+# Dev stack. Requires the sibling repositories ../silo-server and ../silo-web.
 services:
   postgres:
     image: postgres:17
     environment:
       POSTGRES_USER: silo
-      POSTGRES_PASSWORD: silo # tylko dev
+      POSTGRES_PASSWORD: silo # dev only
       POSTGRES_DB: silo
     ports: ["${SILO_DEV_PG_PORT:-5432}:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
@@ -15,13 +14,13 @@ services:
       timeout: 3s
       retries: 30
 
-  # Referencyjny serwer IMAP/SMTP (docker-mailserver 16 = Dovecot 2.4). Tylko dev: bez TLS, bez filtrow.
-  # Konta dev1-3@silo.test: dev/dms/config/postfix-accounts.cf (hasla: README, sekcja dev).
+  # Reference IMAP/SMTP server (docker-mailserver 16 = Dovecot 2.4). Dev only: no TLS, no filters.
+  # Accounts dev1-3@silo.test: dev/dms/config/postfix-accounts.cf (passwords: README, dev section).
   mailserver:
     image: ghcr.io/docker-mailserver/docker-mailserver:16
     hostname: mail.silo.test
     environment:
-      # odchudzenie na potrzeby dev: bez filtrow i podpisow (to nie jest zakres Silo)
+      # slimmed down for dev: no filters or signing (not in Silo's scope)
       ENABLE_RSPAMD: "0"
       ENABLE_SPAMASSASSIN: "0"
       ENABLE_CLAMAV: "0"
@@ -30,8 +29,8 @@ services:
       ENABLE_OPENDMARC: "0"
       ENABLE_POLICYD_SPF: "0"
       ENABLE_FAIL2BAN: "0"
-      PERMIT_DOCKER: network # Postfix przyjmuje poczte z sieci compose bez auth (seed)
-      SSL_TYPE: "" # dev bez TLS; dovecot.cf dopuszcza plaintext auth
+      PERMIT_DOCKER: network # Postfix accepts mail from the compose network without auth (seed)
+      SSL_TYPE: "" # dev without TLS; dovecot.cf allows plaintext auth
     volumes:
       - ./dev/dms/config:/tmp/docker-mailserver
       - dms-mail:/var/mail
@@ -54,15 +53,15 @@ services:
       SILO_LOG_LEVEL: debug
       SILO_DATABASE_URL: postgres://silo:silo@postgres:5432/silo?sslmode=disable
       SILO_PUBLIC_URL: http://localhost:${SILO_DEV_WEB_PORT:-5173}
-      SILO_SECRET_KEY: ZGV2LW9ubHktZGV2LW9ubHktZGV2LW9ubHktZGV2MzI= # 32 B base64, WYLACZNIE dev
+      SILO_SECRET_KEY: ZGV2LW9ubHktZGV2LW9ubHktZGV2LW9ubHktZGV2MzI= # 32 B base64, dev ONLY
       SILO_AUTH_MODE: imap
       SILO_DEFAULT_IMAP_HOST: mailserver
       SILO_DEFAULT_IMAP_PORT: "143"
-      SILO_DEFAULT_IMAP_TLS: none # tylko dev; prod wymaga implicit/starttls
+      SILO_DEFAULT_IMAP_TLS: none # dev only; prod requires implicit/starttls
       SILO_DEFAULT_SMTP_HOST: mailserver
       SILO_DEFAULT_SMTP_PORT: "587"
       SILO_DEFAULT_SMTP_TLS: none
-      SILO_ALLOW_INSECURE_TRANSPORT: "true" # bez tego `none` jest odrzucane przy starcie
+      SILO_ALLOW_INSECURE_TRANSPORT: "true" # without it `none` is rejected at start-up
       SILO_SYNC_MAX_CONNECTIONS_PER_ACCOUNT: ${SILO_SYNC_MAX_CONNECTIONS_PER_ACCOUNT:-3}
       SILO_SYNC_INITIAL_CONCURRENCY: ${SILO_SYNC_INITIAL_CONCURRENCY:-2}
       SILO_SYNC_POLL_INTERVAL: ${SILO_SYNC_POLL_INTERVAL:-5m}
@@ -85,11 +84,11 @@ services:
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     volumes:
       - ../silo-web:/src
-      # node_modules w wolumenie kontenera: nie mieszamy modulow hosta (Windows) z Linuksem
+      # node_modules in a container volume: do not mix host (Windows) modules with Linux ones
       - web_node_modules:/src/node_modules
     environment:
       VITE_API_PROXY: http://silo-server:8080
-      # bind mount z Windows nie przekazuje zdarzen plikowych: watcher Vite musi odpytywac
+      # a bind mount from Windows does not pass file events: the Vite watcher has to poll
       VITE_USE_POLLING: "1"
     ports: ["${SILO_DEV_WEB_PORT:-5173}:5173"]
 

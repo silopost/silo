@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# Przebieg DoD Fazy 5 (backup metadanych -> utrata danych Silo -> restore + sync) na osobnym
-# stosie docker-compose.backup-test.yml (projekt silo-bt; stos dev nie jest dotykany):
-#   a. swiezy stos (down -v, up -d --build), czekanie na healthz i serwer poczty;
-#   b. seed (scripts/seed-mail.sh) do dev1@silo.test;
-#   c. logowanie, czekanie na sync-status `live` (czas initial sync);
-#   d. metadane: etykieta uzytkownika Backup-Test na 2 watkach INBOX, archiwizacja 1 watku,
-#      draft z zalacznikiem (zsynchronizowany do Drafts), draft zaplanowany na +1 h (SCHEDULED),
-#      snooze 1 watku na +1 h (SNOOZED, folder Snoozed na serwerze), filtr z etykieta Backup-Test;
-#      migawka A: INBOX (bez id i pendingSync, etykiety po nazwach), liczba watkow Backup-Test,
-#      SNOOZED (temat i czas wybudzenia), filtry (etykiety po nazwach);
+# Runs the phase 5 definition of done (metadata backup -> loss of Silo data -> restore + sync) on a
+# separate stack docker-compose.backup-test.yml (project silo-bt; the dev stack is not touched):
+#   a. a fresh stack (down -v, up -d --build), waiting for healthz and the mail server;
+#   b. seed (scripts/seed-mail.sh) into dev1@silo.test;
+#   c. sign-in, waiting for sync-status `live` (initial sync time);
+#   d. metadata: user label Backup-Test on 2 INBOX threads, archiving 1 thread,
+#      a draft with an attachment (synced to Drafts), a draft scheduled for +1 h (SCHEDULED),
+#      a snooze of 1 thread for +1 h (SNOOZED, Snoozed folder on the server), a filter with label Backup-Test;
+#      snapshot A: INBOX (without ids and pendingSync, labels by name), the number of Backup-Test threads,
+#      SNOOZED (subject and wake time), filters (labels by name);
 #   e. scripts/backup.sh metadata;
-#   f. usuniecie kontenerow i wolumenow Silo (pgdata, blobs). DoD mowi `down -v`; tu chodzi
-#      o wolumeny Silo: serwer poczty (dms-mail) gra role zewnetrznego IMAP, jak w produkcji;
-#   g. up silo-server (pusta baza, migracje), scripts/restore.sh metadata;
-#   h. logowanie, czekanie na `live`, na 2 watki z Backup-Test i snooze (job metadata_restore);
-#   i. porownanie migawek A i B, draft (temat, tresc, zalacznik z rozmiarem), SCHEDULED,
-#      SNOOZED, filtr z etykieta po nazwie;
-#   j. PASS/FAIL i czasy.
-# Opcje: --keep (zostaw stos silo-bt; domyslnie down -v projektu silo-bt), -h/--help.
-# Srodowisko: SILO_BT_PG_PORT (15432), SILO_BT_SERVER_PORT (18080), SILO_BT_IMAP_PORT (11143),
-#   SILO_BT_SMTP_PORT (12525), SILO_BT_SUBMISSION_PORT (11587), SILO_BT_TIMEOUT (s, domyslnie 180).
-# Wymaga: docker compose, curl, repo-rodzenstwa ../silo-server. Kod wyjscia: 0 = PASS, 1 = FAIL.
+#   f. removal of the Silo containers and volumes (pgdata, blobs). The DoD says `down -v`; what matters
+#      here are the Silo volumes: the mail server (dms-mail) plays the external IMAP server, as in production;
+#   g. up silo-server (empty database, migrations), scripts/restore.sh metadata;
+#   h. sign-in, waiting for `live`, for 2 threads with Backup-Test and the snooze (job metadata_restore);
+#   i. comparison of snapshots A and B, the draft (subject, body, attachment with its size), SCHEDULED,
+#      SNOOZED, the filter with its label by name;
+#   j. PASS/FAIL and timings.
+# Options: --keep (keep the silo-bt stack; default down -v of the silo-bt project), -h/--help.
+# Environment: SILO_BT_PG_PORT (15432), SILO_BT_SERVER_PORT (18080), SILO_BT_IMAP_PORT (11143),
+#   SILO_BT_SMTP_PORT (12525), SILO_BT_SUBMISSION_PORT (11587), SILO_BT_TIMEOUT (s, default 180).
+# Requires: docker compose, curl, the sibling repository ../silo-server. Exit code: 0 = PASS, 1 = FAIL.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -53,7 +53,7 @@ while [ $# -gt 0 ]; do
 done
 
 tmp="$(mktemp -d)"
-# shellcheck disable=SC2329 # wywolywana przez trap
+# shellcheck disable=SC2329 # called by trap
 cleanup() {
   rm -rf "$tmp"
   if [ "$KEEP" = 1 ]; then
@@ -69,16 +69,16 @@ secs() { awk -v ms="$1" 'BEGIN { printf "%.1f s", ms / 1000 }'; }
 step() { echo "== $*"; }
 die() { echo "FAIL: $*" >&2; exit 1; }
 FAILS=0
-check() { # opis polecenie...
+check() { # description command...
   local what="$1"
   shift
   if "$@"; then echo "  ok: $what"; else echo "  BLAD: $what" >&2; FAILS=$((FAILS + 1)); fi
 }
 
-# Wywolanie API (sesja z cookie, X-Silo-CSRF); body na stdout, blad HTTP na stderr.
+# API call (cookie session, X-Silo-CSRF); body on stdout, HTTP error on stderr.
 CSRF=""
 ACC=""
-api() { # METODA SCIEZKA [JSON]
+api() { # METHOD PATH [JSON]
   local m="$1" p="$2" code
   shift 2
   local args=(-sS --max-time 60 -b "$tmp/cookies" -c "$tmp/cookies" -X "$m" -o "$tmp/resp" -w '%{http_code}')
@@ -91,16 +91,16 @@ api() { # METODA SCIEZKA [JSON]
   esac
 }
 
-# Proste pola JSON bez jq: pierwsze "klucz":"wartosc" / "klucz":liczba.
+# Simple JSON fields without jq: the first "key":"value" / "key":number.
 json_str() { { grep -o "\"$1\":\"[^\"]*\"" || true; } | head -n1 | sed 's/.*:"\(.*\)"$/\1/'; }
 json_num() { { grep -o "\"$1\":[0-9]*" || true; } | head -n1 | sed 's/.*://'; }
 count_threads() { { grep -o '"messageCount"' || true; } | wc -l | tr -d ' '; }
 
-# Zlozone operacje na JSON: Postgres ze stosu (jsonb). JSON ze stdin jako `j` w CTE `s`.
+# Complex JSON operations: Postgres from the stack (jsonb). JSON from stdin as `j` in CTE `s`.
 pg_json() { # SQL (SELECT ... FROM s ...)
   local json
   json="$(cat)"
-  # shellcheck disable=SC2016 # $siloj$ to cytowanie dolarowe Postgresa, $POSTGRES_* rozwija kontener
+  # shellcheck disable=SC2016 # $siloj$ is Postgres dollar quoting, the container expands $POSTGRES_*
   {
     printf 'WITH s AS (SELECT $siloj$%s$siloj$::jsonb AS j) ' "$json"
     printf '%s;\n' "$1"
@@ -126,7 +126,7 @@ login() {
   [ -n "$CSRF" ] && [ -n "$ACC" ] || die "brak csrfToken lub konta w odpowiedzi logowania: $body"
 }
 
-wait_live() { # t0 -> czas w ms od t0 do stanu live
+wait_live() { # t0 -> time in ms from t0 to the live state
   local t0="$1" st state
   while :; do
     st="$(api GET "/accounts/$ACC/sync-status" 2> /dev/null || true)"
@@ -150,11 +150,11 @@ wait_no_pending_ops() {
   done
 }
 
-label_id() { # nazwa -> l_ id (pusty, gdy brak)
+label_id() { # name -> l_ id (empty when missing)
   api GET /labels | pg_json "SELECT e->>'id' FROM s, jsonb_array_elements(j->'labels') e WHERE e->>'name' = '$1' LIMIT 1"
 }
 
-# Migawka listy INBOX: wiersz na watek, bez id i pendingSync, etykiety po nazwach (posortowane).
+# Snapshot of the INBOX list: a line per thread, without ids and pendingSync, labels by name (sorted).
 snapshot() {
   local threads labels
   threads="$(api GET '/threads?labelId=INBOX&limit=100')"
@@ -171,20 +171,20 @@ SELECT concat_ws(' | ', t.e->>'subject', t.e->>'lastMessageAt', t.e->>'messageCo
 FROM s, jsonb_array_elements(s.j->'t'->'threads') WITH ORDINALITY t(e, n) ORDER BY t.n"
 }
 
-# Watki o danym temacie pod etykieta (DRAFT, SCHEDULED): "draftId|temat" na wiersz.
-threads_with_subject() { # etykieta temat
+# Threads with a given subject under a label (DRAFT, SCHEDULED): "draftId|subject" per line.
+threads_with_subject() { # label subject
   api GET "/threads?labelId=$1&limit=100" | pg_json "
 SELECT concat(coalesce(e->>'draftId', ''), '|', e->>'subject') FROM s, jsonb_array_elements(j->'threads') e
 WHERE e->>'subject' = '$2'"
 }
 
-# Odlozone watki: "temat|snoozedUntil" na wiersz, posortowane.
+# Snoozed threads: "subject|snoozedUntil" per line, sorted.
 snoozed_state() {
   api GET '/threads?labelId=SNOOZED&limit=100' | pg_json "
 SELECT concat(e->>'subject', '|', e->>'snoozedUntil') FROM s, jsonb_array_elements(j->'threads') e ORDER BY 1"
 }
 
-# Filtry konta: "nazwa|kryteria|enabled|archive|etykiety po nazwach" na wiersz.
+# Account filters: "name|criteria|enabled|archive|labels by name" per line.
 filters_state() {
   local filters labels
   filters="$(api GET "/filters?accountId=$ACC")"
@@ -197,14 +197,14 @@ SELECT concat_ws('|', f.e->>'name', f.e->>'criteria', f.e->>'enabled', f.e->'act
 FROM s, jsonb_array_elements(s.j->'f'->'filters') f(e) ORDER BY 1"
 }
 
-# Stan draftu: temat|tresc|nazwa zalacznika|rozmiar|id zalacznika.
+# Draft state: subject|body|attachment name|size|attachment id.
 draft_state() {
   api GET "/drafts/$1" | pg_json "
 SELECT concat_ws('|', j->>'subject', j->>'bodyHtml', j->'attachments'->0->>'filename',
   j->'attachments'->0->>'size', j->'attachments'->0->>'id') FROM s"
 }
 
-# Bajty zalacznika draftu: upload u_X to wiersz attachments o tym samym id (GET /attachments/a_X).
+# Draft attachment bytes: upload u_X is the attachments row with the same id (GET /attachments/a_X).
 attachment_size() {
   curl -sS --max-time 60 -f -b "$tmp/cookies" -o "$tmp/att.bin" "$BASE/api/v1/attachments/a_${1#u_}" || return 1
   wc -c < "$tmp/att.bin" | tr -d ' '
@@ -212,7 +212,7 @@ attachment_size() {
 
 t_all=$(now_ms)
 
-# a. Swiezy stos.
+# a. Fresh stack.
 step "a. stos silo-bt (down -v, up -d --build)"
 "${COMPOSE[@]}" down -v --remove-orphans > /dev/null 2>&1 || true
 "${COMPOSE[@]}" up -d --build > "$tmp/up.log" 2>&1 || { cat "$tmp/up.log" >&2; die "docker compose up"; }
@@ -237,14 +237,14 @@ while :; do
 done
 echo "  INBOX na serwerze IMAP: $n wiadomosci"
 
-# c. Logowanie i initial sync.
+# c. Sign-in and initial sync.
 step "c. logowanie i initial sync"
 t0=$(now_ms)
 login
 sync_ms="$(wait_live "$t0")"
 echo "  konto $ACC: login -> live $(secs "$sync_ms")"
 
-# d. Metadane i migawka A.
+# d. Metadata and snapshot A.
 step "d. metadane: etykieta, archiwizacja, drafty, snooze, filtr"
 inbox="$(api GET '/threads?labelId=INBOX&limit=100')"
 mapfile -t tids < <(printf '%s' "$inbox" | { grep -o '"id":"t_[^"]*"' || true; } | sed 's/.*:"\(.*\)"$/\1/' | head -n4)
@@ -260,7 +260,7 @@ draft_subject="Backup draft $stamp"
 draft_body="<p>Tresc draftu $stamp</p>"
 head -c 3000 /dev/zero | tr '\0' 'x' > "$tmp/zalacznik.txt"
 att_size="$(wc -c < "$tmp/zalacznik.txt" | tr -d ' ')"
-# Wzgledna sciezka pliku: curl z Git Bash na Windows nie zna sciezek /tmp/...
+# Relative file path: curl from Git Bash on Windows does not know /tmp/... paths
 upload="$(cd "$tmp" && curl -sS --fail-with-body --max-time 60 -b cookies -H "X-Silo-CSRF: $CSRF" -F 'file=@zalacznik.txt;type=text/plain' "$BASE/api/v1/uploads")" || die "upload: $upload"
 upload_id="$(printf '%s' "$upload" | json_str id)"
 d1="$(api POST /drafts '{}')" || die "POST /drafts"
@@ -285,7 +285,7 @@ filter_id="$(api POST /filters "{\"accountId\":\"$ACC\",\"name\":\"$FILTER\",\"c
 [ -n "$filter_id" ] || die "nie utworzono filtra $FILTER"
 echo "  filtr $filter_id: from:backup-filter@example.com -> archiwizuj + $LABEL"
 
-sleep 5 # okno undo (1 s) + write-back
+sleep 5 # undo window (1 s) + write-back
 wait_no_pending_ops
 snapshot > "$tmp/A.txt"
 a_label="$(api GET "/threads?labelId=$lbl&limit=100" | count_threads)"
@@ -307,7 +307,7 @@ bash scripts/backup.sh metadata --out "$tmp/backup" 2>&1 | sed 's/^/  /'
 [ "${PIPESTATUS[0]}" -eq 0 ] || die "backup.sh"
 backup_file="$(ls "$tmp"/backup/silo-metadata-*.json)"
 
-# f. Utrata danych Silo: kontenery + wolumeny pgdata i blobs (dms-mail zostaje, patrz naglowek).
+# f. Loss of Silo data: containers + the pgdata and blobs volumes (dms-mail stays, see the header).
 step "f. usuniecie silo-server, postgres i wolumenow pgdata, blobs"
 "${COMPOSE[@]}" rm -sfv silo-server postgres blobs-init > /dev/null 2>&1
 for v in pgdata blobs; do
@@ -316,7 +316,7 @@ for v in pgdata blobs; do
   docker volume rm "$vol" > /dev/null
 done
 
-# g. Swieza baza i restore.
+# g. Fresh database and restore.
 step "g. up (pusta baza) i scripts/restore.sh metadata"
 "${COMPOSE[@]}" up -d silo-server > "$tmp/up2.log" 2>&1 || { cat "$tmp/up2.log" >&2; die "docker compose up"; }
 wait_healthz
@@ -324,7 +324,7 @@ t_restore=$(now_ms)
 bash scripts/restore.sh metadata "$backup_file" 2>&1 | sed 's/^/  /'
 [ "${PIPESTATUS[0]}" -eq 0 ] || die "restore.sh"
 
-# h. Logowanie, sync i odtworzenie etykiet.
+# h. Sign-in, sync and label restore.
 step "h. logowanie, sync, metadata_restore"
 login
 live_ms="$(wait_live "$t_restore")"
@@ -352,7 +352,7 @@ done
 snoozed_state > "$tmp/B-snoozed.txt"
 filters_state > "$tmp/B-filters.txt"
 
-# i. Porownanie.
+# i. Comparison.
 step "i. porownanie"
 check "etykieta $LABEL odtworzona (${lbl2:-brak})" test -n "$lbl2"
 check "$LABEL na 2 watkach (jest $b_label)" test "$b_label" = 2
@@ -380,7 +380,7 @@ check "watek nadal w SNOOZED z tym samym czasem (przed: $(paste -sd ';' "$tmp/A-
 b_filters="$(paste -sd ';' "$tmp/B-filters.txt")"
 check "filtr $FILTER z etykieta $LABEL po nazwie (po: ${b_filters:-brak})" cmp -s "$tmp/A-filters.txt" "$tmp/B-filters.txt"
 
-# j. Wynik.
+# j. Result.
 step "j. wynik"
 echo "  initial sync (login -> live): $(secs "$sync_ms")"
 if [ "$match_ms" -ge 0 ]; then match_txt="$(secs "$match_ms")"; else match_txt="brak zgodnosci w ${TIMEOUT} s"; fi

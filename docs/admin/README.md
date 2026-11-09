@@ -1,30 +1,30 @@
-# Administracja instancją Silo
+# Administering a Silo instance
 
-Przewodnik administratora instancji Silo (stan po Fazie 5: `silo` 0.5.0, `silo-server` 0.5.0, `silo-web` 0.4.0). Pełna lista zmiennych środowiskowych: README `silo-server` (sekcja „Configuration”) i [plan 2.5](../../ARCHITECTURE_AND_PLAN.md#25-konfiguracja-instancji-env); model zagrożeń: [threat-model.md](../threat-model.md).
+A guide for administrators of a Silo instance (state after phase 5: `silo` 0.5.0, `silo-server` 0.5.0, `silo-web` 0.4.0). Full list of environment variables: the `silo-server` README (section "Configuration") and the [Configuration section of the main README](../../README.md#configuration); threat model: [threat-model.md](../threat-model.md).
 
-Osobne strony: [backup i odtwarzanie](backup.md), [OAuth2 dla Gmaila i Microsoft 365](oauth.md).
+Separate pages: [backup and restore](backup.md), [OAuth2 for Gmail and Microsoft 365](oauth.md).
 
-## Instalacja produkcyjna
+## Production installation
 
-**Wymagania:** host Linux z Docker Engine i Compose v2 (≥ 2.24), rekord DNS (A/AAAA) domeny instancji wskazujący na host, otwarte porty 80 i 443 (Caddy pobiera certyfikat ACME), ruch wychodzący do serwerów poczty (IMAP 993/143, SMTP 587/465) i HTTPS (ISPDB, dostawcy OAuth2). Pamięć: `silo-server` mieści się w kilkuset MB (test 200k wiadomości: maks. 77 MiB RSS); dysk Postgresa i blobów rośnie jak rozmiar mirrorowanych skrzynek (limity `SILO_MIRROR_*`).
+**Requirements:** a Linux host with Docker Engine and Compose v2 (≥ 2.24), a DNS record (A/AAAA) for the instance's domain pointing at the host, open ports 80 and 443 (Caddy obtains an ACME certificate), outbound traffic to mail servers (IMAP 993/143, SMTP 587/465) and HTTPS (ISPDB, OAuth2 providers). Memory: `silo-server` fits in a few hundred MB (200k-message test: max. 77 MiB RSS); the Postgres and blob disk grows with the size of the mirrored mailboxes (limits `SILO_MIRROR_*`).
 
-Stos [`docker-compose.yml`](../../docker-compose.yml) (projekt `silo-prod`): `caddy` (TLS, 80/443, [`Caddyfile`](../../Caddyfile): `/api/v1/events` bez buforowania, `/api/*` → `silo-server`, reszta → `silo-web`, nagłówki bezpieczeństwa i HSTS dla SPA), `postgres:17` (wolumen `pgdata`), `silo-server` (obraz `ghcr.io/silopost/silo-server:${SILO_SERVER_TAG}`, distroless nonroot, wolumen `blobs` przygotowywany przez `blobs-init`, bez portów na hoście) i `silo-web` (`ghcr.io/silopost/silo-web:${SILO_WEB_TAG}`, statyczny build serwowany przez nginx w obrazie). Serwer poczty jest zewnętrzny.
+The [`docker-compose.yml`](../../docker-compose.yml) stack (project `silo-prod`): `caddy` (TLS, 80/443, [`Caddyfile`](../../Caddyfile): `/api/v1/events` without buffering, `/api/*` → `silo-server`, everything else → `silo-web`, security headers and HSTS for the SPA), `postgres:17` (volume `pgdata`), `silo-server` (image `ghcr.io/silopost/silo-server:${SILO_SERVER_TAG}`, distroless nonroot, volume `blobs` prepared by `blobs-init`, no host ports) and `silo-web` (`ghcr.io/silopost/silo-web:${SILO_WEB_TAG}`, a static build served by nginx inside the image). The mail server is external.
 
 ```sh
 git clone --branch v0.5.0 https://github.com/silopost/silo.git && cd silo
 cp .env.example .env
 openssl rand -base64 32     # -> SILO_SECRET_KEY
 openssl rand -hex 24        # -> SILO_POSTGRES_PASSWORD
-$EDITOR .env                # sekcja "Produkcja": SILO_DOMAIN, klucze, SILO_DEFAULT_*
+$EDITOR .env                # production section: SILO_DOMAIN, keys, SILO_DEFAULT_*
 docker compose up -d
-docker compose logs -f silo-server       # migracje przy starcie, potem nasłuch :8080
-curl -fsS https://poczta.example.com/healthz && curl -fsS https://poczta.example.com/api/v1/meta
+docker compose logs -f silo-server       # migrations at start-up, then listening on :8080
+curl -fsS https://mail.example.com/healthz && curl -fsS https://mail.example.com/api/v1/meta
 ```
 
-- **`.env`:** `docker-compose.yml` przekazuje do `silo-server` wszystkie zmienne `SILO_*` z `.env` (`env_file`; inny plik: `SILO_ENV_FILE`). Wymagane: `SILO_DOMAIN`, `SILO_SECRET_KEY`, `SILO_POSTGRES_PASSWORD` i w trybie `imap` `SILO_DEFAULT_IMAP_HOST`. `SILO_PUBLIC_URL` domyślnie `https://$SILO_DOMAIN` (musi zgadzać się z adresem w przeglądarce: sprawdzanie `Origin`, ciasteczko `Secure`, adres powrotu OAuth2).
-- **`SILO_SECRET_KEY`** szyfruje hasła skrzynek, tokeny OAuth2 i sekrety TOTP. Zapisz kopię **osobno** od backupów bazy (menedżer haseł, sejf). Bez klucza backup nie odtworzy dostępu do skrzynek; rotacja: README `silo-server` (`rotate-secrets`).
-- **`SILO_TRUSTED_PROXIES`:** sieć compose ma stałą podsieć `SILO_NETWORK_SUBNET` (domyślnie `172.29.250.0/24`, zmień przy kolizji); z niej przychodzi Caddy, więc tylko jej `X-Forwarded-For` jest honorowany. Caddy nie przekazuje dalej `X-Forwarded-For` od klientów (tylko od swoich zaufanych proxy), więc nagłówka nie da się podrobić z zewnątrz. Za dodatkowym balancerem dopisz jego adres w `SILO_TRUSTED_PROXIES` i w opcji `trusted_proxies` Caddy. Sprawdź w logu `security event`, że `ip=` to adresy klientów, a nie bramka dockera (Docker zachowuje adres źródłowy przy publikacji portów przez iptables; `userland-proxy` go gubi).
-- **Serwer domyślny – docker-mailserver w innym compose na tym samym hoście:** dołącz kontener poczty do sieci Silo z aliasem równym nazwie z certyfikatu, żeby TLS się weryfikował, i ustaw tę nazwę jako `SILO_DEFAULT_IMAP_HOST`/`SILO_DEFAULT_SMTP_HOST`. W compose docker-mailservera (sieć `silo-prod_default` powstaje przy pierwszym `docker compose up` Silo):
+- **`.env`:** `docker-compose.yml` passes all `SILO_*` variables from `.env` to `silo-server` (`env_file`; another file: `SILO_ENV_FILE`). Required: `SILO_DOMAIN`, `SILO_SECRET_KEY`, `SILO_POSTGRES_PASSWORD` and, in mode `imap`, `SILO_DEFAULT_IMAP_HOST`. `SILO_PUBLIC_URL` defaults to `https://$SILO_DOMAIN` (it must match the address in the browser: `Origin` checks, the `Secure` cookie, the OAuth2 return address).
+- **`SILO_SECRET_KEY`** encrypts mailbox passwords, OAuth2 tokens and TOTP secrets. Keep a copy **separately** from the database backups (password manager, safe). Without the key a backup cannot restore access to the mailboxes; rotation: the `silo-server` README (`rotate-secrets`).
+- **`SILO_TRUSTED_PROXIES`:** the compose network has a fixed subnet `SILO_NETWORK_SUBNET` (default `172.29.250.0/24`, change it on a collision); Caddy comes from it, so only its `X-Forwarded-For` is honored. Caddy does not pass on `X-Forwarded-For` from clients (only from its own trusted proxies), so the header cannot be forged from the outside. Behind an additional load balancer, add its address to `SILO_TRUSTED_PROXIES` and to Caddy's `trusted_proxies` option. Check in the `security event` log that `ip=` shows client addresses and not the Docker gateway (Docker keeps the source address when publishing ports through iptables; `userland-proxy` loses it).
+- **Default server – docker-mailserver in another compose project on the same host:** attach the mail container to Silo's network with an alias equal to the name in its certificate, so that TLS verifies, and set that name as `SILO_DEFAULT_IMAP_HOST`/`SILO_DEFAULT_SMTP_HOST`. In the docker-mailserver compose file (the `silo-prod_default` network is created by Silo's first `docker compose up`):
 
   ```yaml
   services:
@@ -39,67 +39,69 @@ curl -fsS https://poczta.example.com/healthz && curl -fsS https://poczta.example
       name: silo-prod_default
   ```
 
-  Host domyślny jest zaufany (nie przechodzi filtra anty-SSRF), więc adres prywatny jest w porządku. Serwer zewnętrzny: publiczna nazwa hosta, porty 993/`implicit` i 587/`starttls` (lub 465/`implicit`).
-- **Pierwsze uruchomienie:** `silo-server` czeka na zdrowy Postgres, wykonuje migracje (pod `pg_advisory_lock`) i startuje. Tryb `imap`: pierwsze logowanie danymi skrzynki zakłada użytkownika i jego konto; admina nadaje `docker compose exec silo-server /silo-server user admin --email X --set=true`. Tryb `local` – niżej.
-- **Budowa z kodu** (przed wydaniem obrazów lub do testów): `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` z repozytoriami `silo-server` i `silo-web` obok.
-- Logi `silo-server`: sterownik `json-file` z rotacją (10 MB × 5); format `SILO_LOG_FORMAT` (`text` w `.env.example`, wygodny dla fail2ban).
+  The default host is trusted (it does not go through the anti-SSRF filter), so a private address is fine. An external server: a public host name, ports 993/`implicit` and 587/`starttls` (or 465/`implicit`).
+- **First start:** `silo-server` waits for a healthy Postgres, runs the migrations (under `pg_advisory_lock`) and starts. Mode `imap`: the first sign-in with mailbox credentials creates the user and their account; admin rights are granted with `docker compose exec silo-server /silo-server user admin --email X --set=true`. Mode `local` – see below.
+- **Building from source** (before images are published, or for testing): `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` with the `silo-server` and `silo-web` repositories next to this one.
+- `silo-server` logs: the `json-file` driver with rotation (10 MB × 5); format `SILO_LOG_FORMAT` (`text` in `.env.example`, convenient for fail2ban).
 
-## Tryb `local` i pierwszy admin
+## Mode `local` and the first admin
 
-`SILO_AUTH_MODE=local` – użytkownicy Silo z własnym hasłem, zakładani przez admina; skrzynki (dowolne serwery, autokonfiguracja, OAuth2) dodają sami w UI ([ADR 0011](../adr/0011-local-auth-mode-and-totp.md)). `SILO_DEFAULT_IMAP_HOST` jest wtedy opcjonalny.
+`SILO_AUTH_MODE=local` – Silo users with their own password, created by an admin; they add mailboxes (any servers, autoconfiguration, OAuth2) themselves in the UI ([ADR 0011](../adr/0011-local-auth-mode-and-totp.md)). `SILO_DEFAULT_IMAP_HOST` is optional then.
 
 ```sh
-docker compose exec silo-server /silo-server user add --email admin@example.com --admin   # hasło wypisane raz
-echo 'dlugie haslo' | docker compose exec -T silo-server /silo-server user add --email ala@example.com --password-stdin
-docker compose exec -T silo-server /silo-server user passwd --email ala@example.com   # nowe hasło ze stdin
+docker compose exec silo-server /silo-server user add --email admin@example.com --admin   # password printed once
+echo 'a long password' | docker compose exec -T silo-server /silo-server user add --email alice@example.com --password-stdin
+docker compose exec -T silo-server /silo-server user passwd --email alice@example.com   # new password from stdin
 docker compose exec silo-server /silo-server user list
 ```
 
-- **TOTP:** każdy użytkownik włącza go w `silo-web` (Ustawienia → Bezpieczeństwo: kod QR, 10 kodów zapasowych pokazywanych raz). Admin powinien mieć TOTP włączony. Zgubione urządzenie bez kodów: Administracja → Użytkownicy → reset TOTP (`POST /admin/users/{id}/totp/reset`).
-- **Panel admina** (`silo-web` → Administracja, dla `isAdmin`): użytkownicy (zakładanie z hasłem tymczasowym, reset hasła, blokada – natychmiastowe wylogowanie i zatrzymanie synchronizacji kont, usunięcie z danymi Silo), konta (stan, błąd, `pendingOps`, `deadOps`), zadania `dead` (ponów / usuń). Admin nie może zablokować, zdegradować ani usunąć siebie.
-- Zmiana trybu działającej instancji z `imap` na `local` nie była testowana; wybierz tryb przy instalacji (w razie zmiany nadaj użytkownikom hasła przez `user passwd`).
+- **TOTP:** every user enables it in `silo-web` (Settings → Security: a QR code and 10 backup codes shown once). Admins should have TOTP enabled. A lost device without codes: Administration → Users → reset TOTP (`POST /admin/users/{id}/totp/reset`).
+- **Admin panel** (`silo-web` → Administration, for `isAdmin`): users (creation with a temporary password, password reset, blocking – immediate sign-out and a stop of account sync, deletion with the user's Silo data), accounts (state, error, `pendingOps`, `deadOps`), `dead` jobs (retry / delete). An admin cannot block, demote or delete themselves.
+- Switching a running instance from mode `imap` to `local` has not been tested; choose the mode at installation (if you switch, give users passwords with `user passwd`).
 
-## Hasła aplikacji
+## App passwords
 
-Silo loguje się do skrzynek w tle, więc przechowuje poświadczenie odwracalnie (zaszyfrowane `SILO_SECRET_KEY`). Wyciek bazy **razem z kluczem** daje dostęp do wszystkich skrzynek ([threat-model.md](../threat-model.md)). Dlatego zamiast hasła głównego używaj poświadczeń odwoływalnych i przypisanych tylko do Silo:
+Silo signs in to mailboxes in the background, so it stores the credential reversibly (encrypted with `SILO_SECRET_KEY`). A database leak **together with the key** gives access to all mailboxes ([threat-model.md](../threat-model.md)). That is why, instead of the main password, use credentials that are revocable and assigned only to Silo:
 
-- **Gmail / Google Workspace:** najlepiej OAuth2 („Zaloguj przez Google”, [oauth.md](oauth.md)); alternatywnie hasło aplikacji (wymaga weryfikacji dwuetapowej; konto Google → Bezpieczeństwo → Hasła do aplikacji) przy koncie z hasłem (`imap.gmail.com:993`, `smtp.gmail.com:465`).
-- **Microsoft 365 (Exchange Online):** tylko OAuth2 – uwierzytelnianie hasłem dla IMAP/SMTP jest wyłączone. Outlook.com: OAuth2 (eksperymentalnie).
-- **Dovecot / docker-mailserver:** natywnych haseł aplikacji nie ma; można dodać drugi `passdb` (np. `passwd-file` z osobnymi hasłami dla Silo) przed głównym, w docker-mailserverze przez nadpisanie konfiguracji Dovecota – SMTP AUTH Postfixa idzie przez Dovecot SASL, więc to samo hasło działa dla wysyłki. Takie hasło można odwołać bez zmiany hasła skrzynki (przykład konfiguracji nie jest testowany przez Silo).
-- Hosting współdzielony: jeśli panel oferuje osobne hasła/konta IMAP dla aplikacji, użyj ich.
+- **Gmail / Google Workspace:** preferably OAuth2 ("Sign in with Google", [oauth.md](oauth.md)); alternatively an app password (requires 2-Step Verification; Google Account → Security → App passwords) on an account with a password (`imap.gmail.com:993`, `smtp.gmail.com:465`).
+- **Microsoft 365 (Exchange Online):** OAuth2 only – password authentication for IMAP/SMTP is turned off. Outlook.com: OAuth2 (experimental).
+- **Dovecot / docker-mailserver:** there are no native app passwords; you can add a second `passdb` (e.g. a `passwd-file` with separate passwords for Silo) before the main one, in docker-mailserver by overriding the Dovecot configuration – Postfix SMTP AUTH goes through Dovecot SASL, so the same password works for sending. Such a password can be revoked without changing the mailbox password (the configuration example is not tested by Silo).
+- Shared hosting: if the control panel offers separate IMAP passwords/accounts for applications, use them.
 
 ## Upgrade
 
-1. Przeczytaj notatki wydania i [macierz kompatybilności](../compat-matrix.md) (wymagane pary `silo-server`/`silo-web`, migracje, reindeksy).
-2. **Backup:** `scripts/backup.sh full` (i `metadata`) – [backup.md](backup.md).
-3. Podbij tagi obrazów: nowy tag repo `silo` (`git pull && git checkout vX.Y.Z` – domyślne `SILO_SERVER_TAG`/`SILO_WEB_TAG` w `docker-compose.yml`) albo zmienne w `.env`.
-4. `docker compose pull && docker compose up -d`. `silo-server` przy starcie wykonuje migracje pod `pg_advisory_lock` (`serve --migrate`, domyślnie włączone); stan: `docker compose exec silo-server /silo-server migrate version`. Migracje są addytywne w obrębie wydania (plan 2.4); migracje tylko tabel cache mogą wymagać `rebuild-cache` – zaznacza to changelog.
-5. Zgodność klienta: `GET /api/v1/meta` zwraca `minWebVersion` (dla 0.5.0: `0.3.0`). Starszy `silo-web` w otwartej karcie pokazuje baner „Dostępna nowa wersja · Odśwież”; PWA – „Nowa wersja aplikacji gotowa”. Aktualizuj serwer i web razem (ten sam `docker compose up -d`).
-6. Ścieżkę upgrade sprawdza CI `silo-server` (`scripts/upgrade-test.sh`, workflow `upgrade.yml`): obraz poprzedniego tagu z danymi (logowanie, wiadomości, etykieta, filtr, snooze) → bieżący obraz na tej samej bazie → ta sama skrzynka, `reconcile` bez rozbieżności. Lokalnie: 0.3.0 → 0.4.0+Faza 5 (schemat 5 → 51) i 0.4.0 → 0.5.0 (9 → 52) PASS.
-7. Wycofanie: migracje nie mają automatycznego `down` między wydaniami – wróć do poprzednich tagów i `scripts/restore.sh full` z kroku 2.
+1. Read the release notes and the [compatibility matrix](../compat-matrix.md) (required `silo-server`/`silo-web` pairs, migrations, reindexes).
+2. **Backup:** `scripts/backup.sh full` (and `metadata`) – [backup.md](backup.md).
+3. Bump the image tags: a new tag of the `silo` repository (`git pull && git checkout vX.Y.Z` – the defaults of `SILO_SERVER_TAG`/`SILO_WEB_TAG` in `docker-compose.yml`) or the variables in `.env`.
+4. `docker compose pull && docker compose up -d`. At start-up `silo-server` runs the migrations under `pg_advisory_lock` (`serve --migrate`, enabled by default); state: `docker compose exec silo-server /silo-server migrate version`. Migrations are additive within a release; migrations of cache tables only may require `rebuild-cache` – the changelog says so.
+5. Client compatibility: `GET /api/v1/meta` returns `minWebVersion` (for 0.5.0: `0.3.0`). An older `silo-web` in an open tab shows a "New version available · Reload" banner; the PWA shows "New app version ready". Upgrade server and web together (the same `docker compose up -d`).
+6. The upgrade path is checked by the `silo-server` CI (`scripts/upgrade-test.sh`, workflow `upgrade.yml`): the image of the previous tag with data (sign-in, messages, a label, a filter, a snooze) → the current image on the same database → the same mailbox, `reconcile` without drift. Locally: 0.3.0 → 0.4.0 + phase 5 (schema 5 → 51) and 0.4.0 → 0.5.0 (9 → 52) PASS.
+7. Rollback: migrations have no automatic `down` between releases – go back to the previous tags and run `scripts/restore.sh full` with the backup from step 2.
 
-## Backup i odtwarzanie
+**Where the images come from:** pushing a `vX.Y.Z` tag in the `silo-server` or `silo-web` repository runs the GitHub Actions workflow `release.yml`, which publishes `ghcr.io/silopost/<repo>:X.Y.Z`, `:X.Y` and `:latest` (multi-arch amd64/arm64); a push to `main` publishes `:edge`. After the first publication, a GHCR package has to be made public once in its settings on GitHub (Package settings → Change visibility); otherwise `docker pull` without signing in to `ghcr.io` does not work.
 
-Szczegóły, harmonogram i procedura odtworzenia: [backup.md](backup.md). W skrócie: `scripts/backup.sh metadata` (mały JSON z danymi istniejącymi tylko w Silo, [ADR 0014](../adr/0014-metadata-backup-format.md)) codziennie, `scripts/backup.sh full` (`pg_dump` + wolumen blobów) rzadziej; `SILO_SECRET_KEY` osobno.
+## Backup and restore
+
+Details, schedule and the restore procedure: [backup.md](backup.md). In short: `scripts/backup.sh metadata` (a small JSON with the data that exists only in Silo, [ADR 0014](../adr/0014-metadata-backup-format.md)) daily, `scripts/backup.sh full` (`pg_dump` + the blob volume) less often; `SILO_SECRET_KEY` separately.
 
 ## S3Store
 
-Bloby (surowe wiadomości, załączniki, uploady, miniatury) mogą leżeć w buckecie S3 zamiast wolumenu `blobs` ([ADR 0012](../adr/0012-s3-blobstore.md)). Zmienne (README `silo-server`, sekcja „S3Store”): `SILO_BLOB_BACKEND=s3`, `SILO_BLOB_S3_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY`, `_REGION`, `_PREFIX`, `_USE_SSL`, `_PATH_STYLE`.
+Blobs (raw messages, attachments, uploads, thumbnails) can live in an S3 bucket instead of the `blobs` volume ([ADR 0012](../adr/0012-s3-blobstore.md)). Variables (the `silo-server` README, section "S3Store"): `SILO_BLOB_BACKEND=s3`, `SILO_BLOB_S3_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY`, `_REGION`, `_PREFIX`, `_USE_SSL`, `_PATH_STYLE`.
 
-- **Bucket musi istnieć** – `serve` sprawdza go przy starcie i nie tworzy. MinIO: `mc mb silo/silo-blobs`; AWS: bucket prywatny (Block Public Access), użytkownik IAM z `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` na `arn:aws:s3:::BUCKET/*` i `s3:ListBucket` na bucket; `SILO_BLOB_S3_PATH_STYLE=false`, endpoint `s3.<region>.amazonaws.com`.
-- MinIO na tym samym hoście: osobny kontener w sieci `silo-prod_default` (`SILO_BLOB_S3_ENDPOINT=minio:9000`, `SILO_BLOB_S3_USE_SSL=false` tylko w sieci wewnętrznej).
-- `Put` buforuje blob w pliku tymczasowym kontenera (`/tmp`), żeby policzyć `sha256` – potrzeba miejsca na największy blob.
-- Backup `full` nie obejmuje bucketu – użyj wersjonowania/replikacji dostawcy lub `mc mirror`.
-- **Migracja z `fs` na `s3` (ręczna, nieprzetestowana end-to-end):** układ kluczy jest ten sam (`ab/cd/<sha256>`, w S3 z prefiksem), więc wystarczy skopiować wolumen do bucketu: zatrzymaj `silo-server` (`docker compose stop silo-server`), skopiuj zawartość wolumenu `silo-prod_blobs` z pominięciem plików `.tmp-*` (np. `mc mirror --exclude ".tmp-*" /var/lib/docker/volumes/silo-prod_blobs/_data silo/silo-blobs/<prefiks>`), ustaw `SILO_BLOB_BACKEND=s3` i `SILO_BLOB_S3_*`, `docker compose up -d`. Skrót: bloby mirrora (`kind=mirror`) to cache – brakujące zostaną pobrane z IMAP przy odczycie lub przez `rebuild-cache --all`; **bloby `local` (uploady, drafty, wiadomości zaplanowane) nie mają kopii na serwerze poczty i trzeba je skopiować** – bez kopiowania wysłanie zaplanowanych wiadomości i otwarcie załączników draftów się nie uda.
+- **The bucket must exist** – `serve` checks it at start-up and does not create it. MinIO: `mc mb silo/silo-blobs`; AWS: a private bucket (Block Public Access), an IAM user with `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on `arn:aws:s3:::BUCKET/*` and `s3:ListBucket` on the bucket; `SILO_BLOB_S3_PATH_STYLE=false`, endpoint `s3.<region>.amazonaws.com`.
+- MinIO on the same host: a separate container in the `silo-prod_default` network (`SILO_BLOB_S3_ENDPOINT=minio:9000`, `SILO_BLOB_S3_USE_SSL=false` only on the internal network).
+- `Put` buffers the blob in a temporary file of the container (`/tmp`) to compute the `sha256` – space for the largest blob is needed.
+- The `full` backup does not cover the bucket – use the provider's versioning/replication or `mc mirror`.
+- **Migrating from `fs` to `s3` (manual, not tested end-to-end):** the key layout is the same (`ab/cd/<sha256>`, in S3 with a prefix), so copying the volume to the bucket is enough: stop `silo-server` (`docker compose stop silo-server`), copy the contents of the `silo-prod_blobs` volume, skipping `.tmp-*` files (e.g. `mc mirror --exclude ".tmp-*" /var/lib/docker/volumes/silo-prod_blobs/_data silo/silo-blobs/<prefix>`), set `SILO_BLOB_BACKEND=s3` and `SILO_BLOB_S3_*`, `docker compose up -d`. Shortcut: mirror blobs (`kind=mirror`) are a cache – missing ones are fetched from IMAP on read or through `rebuild-cache --all`; **`local` blobs (uploads, drafts, scheduled messages) have no copy on the mail server and must be copied** – without copying, sending scheduled messages and opening draft attachments will fail.
 
 ## Hardening
 
-Mechanizmy po stronie serwera opisuje README `silo-server` (sekcja „Hardening”); tu – co ustawić na instancji.
+The server-side mechanisms are described in the `silo-server` README (section "Hardening"); here – what to set on the instance.
 
-- **Proxy i adres klienta:** `SILO_TRUSTED_PROXIES` (instalacja wyżej). Bez niego limity i logi widzą adres Caddy.
-- **Limity:** `SILO_RATE_LIMIT_API` (domyślnie `600/m` na IP), `SILO_RATE_LIMIT_AUTH` (`20/m` na IP dla logowania, zmiany hasła, TOTP; dodatkowo limit na login); przekroczenie → `429 rate_limited` z `Retry-After`. Najwyżej 8 strumieni SSE na użytkownika. Limity są w pamięci procesu (jedna instancja).
-- **Nagłówki:** API – `silo-server` (CSP `default-src 'none'`, `nosniff`, `DENY`, `no-referrer`, HSTS przy `https`; `SILO_HSTS=false`, gdy proxy wysyła HSTS samo lub subdomeny nie mają HTTPS). SPA – `Caddyfile` (CSP `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `img-src` z `https:`/`http:` dla obrazów zdalnych odblokowanych przez użytkownika w ramce wiadomości, HSTS `max-age=31536000; includeSubDomains`). Przy własnym proxy przenieś te nagłówki.
-- **fail2ban:** `silo-server` loguje nieudane logowania, kody TOTP, odrzucenia CSRF, `403` i `429` jako `msg="security event" event=… ip=… path=… login=<zamaskowany>`. W pliku logu dockera (`json-file`) cudzysłowy są poprzedzone `\`, stąd filtr dla `SILO_LOG_FORMAT=text`:
+- **Proxy and client address:** `SILO_TRUSTED_PROXIES` (installation above). Without it, limits and logs see Caddy's address.
+- **Limits:** `SILO_RATE_LIMIT_API` (default `600/m` per IP), `SILO_RATE_LIMIT_AUTH` (`20/m` per IP for sign-in, password change, TOTP; plus a per-login limit); exceeding them → `429 rate_limited` with `Retry-After`. At most 8 SSE streams per user. Limits are kept in process memory (a single instance).
+- **Headers:** API – `silo-server` (CSP `default-src 'none'`, `nosniff`, `DENY`, `no-referrer`, HSTS with `https`; `SILO_HSTS=false` when the proxy sends HSTS itself or subdomains have no HTTPS). SPA – `Caddyfile` (CSP `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `img-src` with `https:`/`http:` for remote images unblocked by the user in the message frame, HSTS `max-age=31536000; includeSubDomains`). With your own proxy, carry these headers over.
+- **fail2ban:** `silo-server` logs failed sign-ins, TOTP codes, CSRF rejections, `403` and `429` as `msg="security event" event=… ip=… path=… login=<masked>`. In the Docker log file (`json-file`) the quotes are preceded by `\`, hence the filter for `SILO_LOG_FORMAT=text`:
 
   ```ini
   # /etc/fail2ban/filter.d/silo.conf
@@ -114,7 +116,7 @@ Mechanizmy po stronie serwera opisuje README `silo-server` (sekcja „Hardening�
   filter    = silo
   logpath   = /var/lib/docker/containers/*/*-json.log
   port      = http,https
-  # porty opublikowane przez Dockera omijają łańcuch INPUT
+  # ports published by Docker bypass the INPUT chain
   chain     = DOCKER-USER
   banaction = iptables-multiport
   maxretry  = 10
@@ -122,60 +124,60 @@ Mechanizmy po stronie serwera opisuje README `silo-server` (sekcja „Hardening�
   bantime   = 1h
   ```
 
-  Przy sterowniku `journald` (`backend = systemd`, `journalmatch = CONTAINER_NAME=silo-prod-silo-server-1`) użyj filtrów z README `silo-server` (bez `\`). `rate_limited` w alternatywie daje ostrzejszy jail (uwaga na klientów za wspólnym NAT).
-- **Pozostałe:** `SILO_ALLOW_CUSTOM_SERVERS=false` w trybie `imap`, jeśli użytkownicy nie potrzebują innych serwerów; nigdy `SILO_ALLOW_INSECURE_TRANSPORT` w produkcji; Postgres bez portu na hoście (jak w `docker-compose.yml`); szyfrowanie dysku i backupów.
+  With the `journald` driver (`backend = systemd`, `journalmatch = CONTAINER_NAME=silo-prod-silo-server-1`) use the filters from the `silo-server` README (without `\`). Adding `rate_limited` to the alternation gives a stricter jail (beware of clients behind a shared NAT).
+- **Other:** `SILO_ALLOW_CUSTOM_SERVERS=false` in mode `imap` if users do not need other servers; never `SILO_ALLOW_INSECURE_TRANSPORT` in production; Postgres without a host port (as in `docker-compose.yml`); disk and backup encryption.
 
-## Autokonfiguracja kont
+## Account autoconfiguration
 
-„Dodaj konto” w `silo-web` wywołuje `POST /api/v1/accounts/discover`, który podpowiada serwery IMAP/SMTP po adresie e-mail: ISPDB Thunderbirda, plik `autoconfig.<domena>` / `.well-known`, rekordy SRV (RFC 6186), na końcu zgadywanie `imap.`/`mail.`/`smtp.` z weryfikacją certyfikatu (README `silo-server`, sekcja „Account autoconfiguration”). Wynik i tak przechodzi test połączenia przed zapisaniem konta.
+"Add account" in `silo-web` calls `POST /api/v1/accounts/discover`, which suggests IMAP/SMTP servers from the email address: Thunderbird's ISPDB, the `autoconfig.<domain>` / `.well-known` file, SRV records (RFC 6186), and finally guessing `imap.`/`mail.`/`smtp.` with certificate verification (the `silo-server` README, section "Account autoconfiguration"). The result still goes through a connection test before the account is saved.
 
-- `SILO_AUTOCONFIG_ISPDB_URL` – domyślnie `https://autoconfig.thunderbird.net/v1.1/`; własny mirror ISPDB lub `off` (bez zapytań do Mozilli; zostają autoconfig domeny, SRV i zgadywanie).
-- Tryb `imap` bez `SILO_ALLOW_CUSTOM_SERVERS`: odpowiedź to serwer domyślny, bez ruchu sieciowego.
-- Wszystkie połączenia autokonfiguracji idą przez filtr anty-SSRF: adresy prywatne są odrzucane, chyba że są na `SILO_CUSTOM_SERVER_ALLOWLIST` (nazwy hostów, IP lub CIDR – np. serwer poczty w sieci firmowej w trybie `local`). Limit 10 wywołań na minutę na użytkownika.
-- Instancja potrzebuje wychodzącego HTTPS (443) i DNS (SRV).
+- `SILO_AUTOCONFIG_ISPDB_URL` – default `https://autoconfig.thunderbird.net/v1.1/`; your own ISPDB mirror or `off` (no queries to Mozilla; domain autoconfig, SRV and guessing remain).
+- Mode `imap` without `SILO_ALLOW_CUSTOM_SERVERS`: the answer is the default server, with no network traffic.
+- All autoconfiguration connections go through the anti-SSRF filter: private addresses are rejected unless they are on `SILO_CUSTOM_SERVER_ALLOWLIST` (host names, IPs or CIDRs – e.g. a mail server on the company network in mode `local`). Limit of 10 calls per minute per user.
+- The instance needs outbound HTTPS (443) and DNS (SRV).
 
 ## OAuth2 (Gmail, Microsoft 365)
 
-Rejestracja aplikacji u Google i w Microsoft Entra, zmienne `SILO_OAUTH_*`, adresy przekierowania i diagnostyka: [oauth.md](oauth.md) ([ADR 0013](../adr/0013-oauth2-xoauth2.md)).
+Registering the application with Google and in Microsoft Entra, the `SILO_OAUTH_*` variables, redirect addresses and diagnostics: [oauth.md](oauth.md) ([ADR 0013](../adr/0013-oauth2-xoauth2.md)).
 
-## Limit 26 słów kluczowych w folderze (Dovecot maildir)
+## The 26-keyword limit per folder (Dovecot maildir)
 
-Etykiety użytkownika Silo są zapisywane na wiadomościach jako IMAP keywords – Thunderbird pokazuje je jako tagi, a odbudowa cache je odczytuje ([plan 3.7](../../ARCHITECTURE_AND_PLAN.md#37-etykiety-użytkownika-jako-imap-keywords), [ADR 0009](../adr/0009-keyword-state-per-folder.md)).
+Silo user labels are stored on messages as IMAP keywords – Thunderbird shows them as tags, and a cache rebuild reads them back ([ADR 0009](../adr/0009-keyword-state-per-folder.md)).
 
-- Dovecot z formatem **maildir** koduje słowa kluczowe literami `a`–`z` w nazwach plików, więc jeden folder ma najwyżej **26 różnych słów kluczowych** (łącznie z tagami Thunderbirda i innych klientów). Formaty **sdbox/mdbox** nie mają tego limitu.
-- Dovecot 2.4 **nie odrzuca** 27. słowa kluczowego: `STORE` kończy się `OK`, ale słowo trafia tylko do indeksu Dovecota i ginie przy jego odbudowie. Dlatego Silo liczy słowa z `PERMANENTFLAGS` folderu i ponad limit nie zapisuje keywordu – etykieta zostaje tylko w Silo dla tego folderu (`keywordState: partial`, `localOnlyFolders`; w `silo-web` ostrzeżenie przy etykiecie). Odmowa `NO` serwera na `STORE` daje ten sam skutek.
-- Limit ustawia `SILO_SYNC_KEYWORD_FOLDER_LIMIT` (domyślnie `26`). Dla sdbox/mdbox lub serwera bez limitu ustaw `0`.
-- Dovecot nie usuwa słowa z listy folderu, gdy znikają wiadomości, które je miały. Folder, w którym wiele etykiet powstawało i znikało (np. skrzynka testowa e2e), może dojść do limitu mimo niewielu etykiet. Wyjścia: przenieść starą pocztę do innego folderu, odtworzyć folder (lub wolumen poczty w dev) albo przejść na sdbox/mdbox.
-- Etykiety `partial` i `local_only` istnieją tylko w bazie Silo – obejmuje je backup Postgresa (plan 3.3).
+- Dovecot with the **maildir** format encodes keywords as the letters `a`–`z` in file names, so one folder has at most **26 different keywords** (including tags of Thunderbird and other clients). The **sdbox/mdbox** formats do not have this limit.
+- Dovecot 2.4 **does not reject** the 27th keyword: `STORE` ends with `OK`, but the word only lands in Dovecot's index and is lost when it is rebuilt. That is why Silo counts the words from the folder's `PERMANENTFLAGS` and does not store a keyword beyond the limit – the label stays only in Silo for that folder (`keywordState: partial`, `localOnlyFolders`; a warning on the label in `silo-web`). A `NO` from the server on `STORE` has the same effect.
+- The limit is set by `SILO_SYNC_KEYWORD_FOLDER_LIMIT` (default `26`). For sdbox/mdbox or a server without the limit, set `0`.
+- Dovecot does not remove a word from the folder's list when the messages that had it are gone. A folder in which many labels were created and removed (e.g. an e2e test mailbox) can reach the limit despite having few labels. Ways out: move old mail to another folder, recreate the folder (or the mail volume in dev), or switch to sdbox/mdbox.
+- `partial` and `local_only` labels exist only in Silo's database – the Postgres backup covers them.
 
-## Odbudowa cache konta (`rebuild-cache`)
+## Account cache rebuild (`rebuild-cache`)
 
-Silo przechowuje lustro poczty (wiadomości, położenia, wątki, bloby) jako cache odtwarzalny z serwera IMAP. Odbudowa usuwa cache konta i robi initial sync od zera.
+Silo keeps a mirror of mail (messages, locations, threads, blobs) as a cache that can be restored from the IMAP server. A rebuild deletes the account's cache and runs an initial sync from scratch.
 
 ```sh
-silo-server rebuild-cache --account 1        # w kontenerze/środowisku instancji (SILO_DATABASE_URL)
-silo-server rebuild-cache --account 1 --yes  # bez pytania o potwierdzenie
+silo-server rebuild-cache --account 1        # in the instance's container/environment (SILO_DATABASE_URL)
+silo-server rebuild-cache --account 1 --yes  # without asking for confirmation
 ```
 
-`--account` to numer konta (`acc_1` w API → `1`).
+`--account` is the account number (`acc_1` in the API → `1`).
 
-- To samo robi `POST /api/v1/accounts/{id}/resync` z `{"mode": "rebuild"}` (UI: Ustawienia → Konta → „Odbuduj cache”). Komenda tylko **kolejkuje** odbudowę (wiersz `account_rebuilds`); wykonuje ją działający `silo-server serve` (lub najbliższy start). Można jej użyć także po ręcznym `TRUNCATE` tabel cache.
-- Odmowa `409 rebuild_blocked`, gdy wiadomość czeka na wysyłkę lub jest wysyłana (`outbound`) albo operacje czekają na zapis na serwerze (`imap_op`); ponów, gdy `sync-status.pendingOps` = 0.
-- **Zostają:** etykiety (nazwy, kolory, drzewo, keywords), filtry, ustawienia, kontakty, historia wyszukiwań, lokalne wiadomości draftów i wysyłek.
-- **Przenoszone po `dedupe_key`** (Message-ID + rozmiar) i przypinane, gdy wiadomości wracają: snooze, przypisania etykiet lokalnych (`local_only`, foldery `localOnlyFolders`), wiadomość, na którą odpowiada draft. Etykiety z keywordami wracają z serwera (także bez metadanych w tabeli `labels` – są tworzone ponownie z nazw keywordów).
-- **Giną:** możliwość cofnięcia (undo) operacji sprzed odbudowy.
-- Czas: initial sync całego konta (na dev ~2 s dla kilkudziesięciu wiadomości; duże skrzynki – minuty do godzin, wg `SILO_SYNC_BACKFILL_RATE`).
+- `POST /api/v1/accounts/{id}/resync` with `{"mode": "rebuild"}` does the same (UI: Settings → Accounts → "Rebuild cache"). The command only **queues** the rebuild (an `account_rebuilds` row); a running `silo-server serve` executes it (or the next start does). It can also be used after a manual `TRUNCATE` of the cache tables.
+- Refused with `409 rebuild_blocked` when a message is waiting to be sent or is being sent (`outbound`), or operations are waiting to be written to the server (`imap_op`); retry when `sync-status.pendingOps` = 0.
+- **Kept:** labels (names, colors, tree, keywords), filters, settings, contacts, search history, local draft and outgoing messages.
+- **Carried over by `dedupe_key`** (Message-ID + size) and reattached when the messages come back: snoozes, assignments of local labels (`local_only`, `localOnlyFolders` folders), the message a draft replies to. Labels with keywords come back from the server (even without metadata in the `labels` table – they are recreated from the keyword names).
+- **Lost:** the ability to undo operations from before the rebuild.
+- Time: an initial sync of the whole account (in dev ~2 s for a few dozen messages; large mailboxes – minutes to hours, depending on `SILO_SYNC_BACKFILL_RATE`).
 
-## Folder `Snoozed`
+## The `Snoozed` folder
 
-- Odłożenie wątku (snooze) przenosi jego wiadomości z INBOX do folderu roli `snoozed` – domyślnie `Snoozed`, tworzonego przez Silo przy pierwszym użyciu (jak Archive) – i dodaje keyword `$SiloSnoozed`. Inne programy pocztowe nie pokazują ich więc w Odebranych ([plan 3.10](../../ARCHITECTURE_AND_PLAN.md#310-snooze)).
-- Inną nazwę folderu można zmapować przez `PUT /accounts/{id}/folders` (rola `snoozed`); istniejący folder o nazwie `Snoozed` jest wykrywany automatycznie.
-- Wybudza job `snooze_wake` (co 30 s i przy nowej wiadomości w odłożonym wątku): wiadomości wracają do INBOX, najnowsza nieprzeczytana, bez `$SiloSnoozed`. **Wymaga działającego Silo** – gdy instancja stoi, poczta czeka bezpiecznie w `Snoozed` i wraca po starcie.
-- Przeniesienie wiadomości z `Snoozed` w innym kliencie kasuje snooze w Silo (≤ 30 s). Usunięcie lub odtworzenie folderu z tymi samymi wiadomościami (nowe `UIDVALIDITY`) nie gubi snooze.
-- Nie usuwaj folderu `Snoozed` z wiadomościami, jeśli instancja ma aktywne snooze – wiadomości wrócą do INBOX dopiero po ich ponownym znalezieniu przez sync.
+- Snoozing a thread moves its messages from INBOX to the folder with the `snoozed` role – by default `Snoozed`, created by Silo on first use (like Archive) – and adds the `$SiloSnoozed` keyword. Other mail programs therefore do not show them in the Inbox.
+- Another folder name can be mapped through `PUT /accounts/{id}/folders` (role `snoozed`); an existing folder named `Snoozed` is detected automatically.
+- The `snooze_wake` job wakes them up (every 30 s and on a new message in a snoozed thread): the messages return to INBOX, the newest one unread, without `$SiloSnoozed`. **It requires a running Silo** – while the instance is down, the mail waits safely in `Snoozed` and comes back after the start.
+- Moving messages out of `Snoozed` in another client cancels the snooze in Silo (≤ 30 s). Deleting or recreating the folder with the same messages (a new `UIDVALIDITY`) does not lose the snooze.
+- Do not delete the `Snoozed` folder with messages in it if the instance has active snoozes – the messages return to INBOX only once sync finds them again.
 
-## Reindeks wyszukiwania po upgrade
+## Search reindex after upgrade
 
-- Indeks pełnotekstowy (`messages.search_tsv`) buduje tokenizer aplikacji ([ADR 0008](../adr/0008-search-tokenizer-in-app.md)); każdy wiersz ma wersję tokenizera (`messages.search_ver`).
-- Po upgrade do wersji z nowym tokenizerem (pierwszy raz: 0.3.0 → 0.4.0, migracja `000006_search_index`) `silo-server` przy starcie przeindeksowuje w tle wiersze ze starszą wersją, paczkami po 500 (log `search index rebuilt messages=… took=…`; na dev 5158 wiadomości w < 1 s). Do końca reindeksu wyniki po starszych wiadomościach mogą być niepełne; odpowiedź wyszukiwania niesie wtedy `indexing`, a UI pokazuje „Indeksowanie treści”.
-- Migracje 0.4.0 (`000006`–`000009`) są addytywne (nowe kolumny, tabele, indeksy) i wykonują się automatycznie przy starcie (`serve`, chyba że `--migrate=false`). Przed upgrade zrób backup Postgresa.
+- The full-text index (`messages.search_tsv`) is built by the application's tokenizer ([ADR 0008](../adr/0008-search-tokenizer-in-app.md)); every row has a tokenizer version (`messages.search_ver`).
+- After an upgrade to a version with a new tokenizer (the first time: 0.3.0 → 0.4.0, migration `000006_search_index`), `silo-server` reindexes rows with an older version in the background at start-up, in batches of 500 (log `search index rebuilt messages=… took=…`; in dev 5158 messages in < 1 s). Until the reindex finishes, results for older messages may be incomplete; the search response then carries `indexing`, and the UI shows "Indexing content".
+- The 0.4.0 migrations (`000006`–`000009`) are additive (new columns, tables, indexes) and run automatically at start-up (`serve`, unless `--migrate=false`). Back up Postgres before upgrading.

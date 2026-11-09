@@ -1,158 +1,160 @@
+# Signing in to mail accounts with OAuth2 (Gmail, Microsoft 365)
 
-# Logowanie kont pocztowych przez OAuth2 (Gmail, Microsoft 365)
+Silo can add Gmail and Microsoft 365 accounts with a "Sign in with Google" /
+"Sign in with Microsoft" button instead of a password. For Microsoft 365 this
+is the only way: Exchange Online has basic (password) authentication for IMAP
+turned off. For Gmail it is a more convenient and more secure alternative to
+app passwords: the user gives Silo no password at all, and access can be
+revoked at any time on Google's side.
 
-Silo może dodawać konta Gmail i Microsoft 365 przyciskiem „Zaloguj przez
-Google” / „Zaloguj przez Microsoft” zamiast hasła. Dla Microsoft 365 to jedyna
-droga: w Exchange Online uwierzytelnianie podstawowe (hasło) dla IMAP jest
-wyłączone. Dla Gmaila to wygodniejsza i bezpieczniejsza alternatywa dla haseł
-aplikacji: użytkownik nie podaje Silo żadnego hasła, a dostęp można w każdej
-chwili odwołać po stronie Google.
+How it works in short:
 
-Jak to działa w skrócie:
+- Silo uses the *authorization code* flow with PKCE (S256). The user signs in
+  on the Google/Microsoft page and consents to access to their mail.
+- Silo stores the **refresh token**, encrypted with `SILO_SECRET_KEY` in the
+  same way as account passwords (the `rotate-secrets` command re-encrypts it
+  together with the passwords). Before every IMAP/SMTP connection Silo obtains
+  a short-lived *access token* and signs in with the `XOAUTH2` mechanism.
+- Every Silo instance needs **its own OAuth application**, registered by the
+  administrator with the provider. Silo does not ship a shared client ID.
 
-- Silo używa przepływu *authorization code* z PKCE (S256). Użytkownik loguje
-  się na stronie Google/Microsoft i zgadza się na dostęp do poczty.
-- Silo zapisuje **refresh token**, zaszyfrowany kluczem `SILO_SECRET_KEY` tak
-  samo jak hasła kont (polecenie `rotate-secrets` przeszyfrowuje go razem z
-  hasłami). Przed każdym połączeniem IMAP/SMTP Silo pobiera krótkotrwały
-  *access token* i loguje się mechanizmem `XOAUTH2`.
-- Każda instancja Silo potrzebuje **własnej aplikacji OAuth** zarejestrowanej
-  przez administratora u dostawcy. Silo nie dostarcza wspólnego identyfikatora
-  klienta.
+The decision and its consequences: [ADR 0013](../adr/0013-oauth2-xoauth2.md);
+protocol details (error codes, tokens): the `silo-server` README, section
+"OAuth2"; other administration: [README](README.md). OAuth2 sign-in currently
+works only in `silo-web` (the browser) – `silo-mobile` will get its own variant
+in phase 6.
 
-Decyzja i jej konsekwencje: [ADR 0013](../adr/0013-oauth2-xoauth2.md);
-szczegóły protokołu (kody błędów, tokeny): README `silo-server`, sekcja
-„OAuth2”; pozostała administracja: [README](README.md). Logowanie OAuth2 działa
-dziś tylko w `silo-web` (przeglądarka) – `silo-mobile` dostanie własny wariant
-w Fazie 6.
+## 1. Redirect URI
 
-## 1. Adres przekierowania (redirect URI)
-
-Dla każdego dostawcy rejestrujesz dokładnie jeden adres:
+For each provider you register exactly one address:
 
 ```text
 <SILO_PUBLIC_URL>/api/v1/oauth/google/callback
 <SILO_PUBLIC_URL>/api/v1/oauth/microsoft/callback
 ```
 
-Przykład dla `SILO_PUBLIC_URL=https://poczta.example.com`:
-`https://poczta.example.com/api/v1/oauth/google/callback`.
+Example for `SILO_PUBLIC_URL=https://mail.example.com`:
+`https://mail.example.com/api/v1/oauth/google/callback`.
 
-W `docker-compose.yml` `SILO_PUBLIC_URL` to domyślnie `https://$SILO_DOMAIN`.
-Adres musi zgadzać się co do znaku (schemat `https`, host, brak końcowego
-ukośnika). Obaj dostawcy wymagają `https` (wyjątkiem jest `http://localhost`
-do testów lokalnych). Jeśli zmieniasz `SILO_PUBLIC_URL`, zmień też adres u
-dostawcy.
+In `docker-compose.yml`, `SILO_PUBLIC_URL` defaults to `https://$SILO_DOMAIN`.
+The address must match character for character (the `https` scheme, the host,
+no trailing slash). Both providers require `https` (the exception is
+`http://localhost` for local tests). If you change `SILO_PUBLIC_URL`, change
+the address at the provider too.
 
 ## 2. Google (Gmail, Google Workspace)
 
-Wszystko w [Google Cloud Console](https://console.cloud.google.com/), na koncie
-administratora instancji (dla Workspace najlepiej na koncie organizacji).
+Everything happens in the [Google Cloud Console](https://console.cloud.google.com/),
+on the instance administrator's account (for Workspace preferably on an
+organization account).
 
-1. **Projekt.** Utwórz nowy projekt (np. „Silo poczta”) albo wybierz istniejący.
-2. **Ekran zgody** (*Google Auth Platform* → *Branding* / dawniej *OAuth consent
-   screen*):
-   - nazwa aplikacji (np. „Silo – poczta”), adres e-mail wsparcia, logo
-     opcjonalnie, domena strony głównej i polityki prywatności (wymagane przy
-     publikacji dla użytkowników zewnętrznych);
-   - *Audience* / typ użytkowników:
-     - **Internal** – tylko konta Twojej organizacji Google Workspace; brak
-       weryfikacji Google, brak limitu użytkowników. Najprostsza opcja dla
-       firmy na Workspace.
-     - **External** – dowolne konta Google (także prywatne @gmail.com).
-3. **Zakresy** (*Data Access* → *Add or remove scopes*): dodaj
-   `https://mail.google.com/` (pełny dostęp IMAP/SMTP – jedyny zakres, który
-   pozwala na IMAP i SMTP) oraz `openid` i `.../auth/userinfo.email`
-   (`email`). Google oznacza `https://mail.google.com/` jako zakres
-   **zastrzeżony** (*restricted*).
-4. **Status publikacji** (dotyczy typu External):
-   - **Testing** – działa od razu, ale tylko dla kont dopisanych jako *Test
-     users* (do 100), a **refresh tokeny wygasają po 7 dniach**: konto w Silo
-     przechodzi wtedy w stan `auth_failed` („OAuth authorization expired; sign
-     in again”) i użytkownik musi zalogować się ponownie. Dobre do prób, nie do
-     codziennej pracy.
-   - **In production** – dla zakresu zastrzeżonego Google wymaga weryfikacji
-     aplikacji, a dla aplikacji udostępnianej szerzej także zewnętrznej oceny
-     bezpieczeństwa (CASA). Bez weryfikacji użytkownicy zobaczą ekran
-     „Google hasn't verified this app” (i obowiązuje limit 100 użytkowników).
-     Dla małej, prywatnej instancji zwykle wystarcza świadome kliknięcie
-     „Advanced → Go to … (unsafe)”; dla organizacji polecamy typ Internal.
-5. **Klient OAuth** (*Clients* / *Credentials* → *Create credentials* → *OAuth
+1. **Project.** Create a new project (e.g. "Silo mail") or select an existing one.
+2. **Consent screen** (*Google Auth Platform* → *Branding* / formerly *OAuth
+   consent screen*):
+   - the application name (e.g. "Silo – mail"), a support email address, an
+     optional logo, the home page domain and the privacy policy (required when
+     publishing for external users);
+   - *Audience* / user type:
+     - **Internal** – only accounts of your Google Workspace organization; no
+       Google verification, no user limit. The simplest option for a company
+       on Workspace.
+     - **External** – any Google accounts (including private @gmail.com).
+3. **Scopes** (*Data Access* → *Add or remove scopes*): add
+   `https://mail.google.com/` (full IMAP/SMTP access – the only scope that
+   allows IMAP and SMTP) as well as `openid` and `.../auth/userinfo.email`
+   (`email`). Google marks `https://mail.google.com/` as a **restricted**
+   scope.
+4. **Publishing status** (applies to the External type):
+   - **Testing** – works right away, but only for accounts added as *Test
+     users* (up to 100), and **refresh tokens expire after 7 days**: the
+     account in Silo then goes to the `auth_failed` state ("OAuth
+     authorization expired; sign in again") and the user has to sign in
+     again. Good for trials, not for daily work.
+   - **In production** – for a restricted scope Google requires verification
+     of the application, and for an application shared more widely also an
+     external security assessment (CASA). Without verification users will see
+     the "Google hasn't verified this app" screen (and a limit of 100 users
+     applies). For a small, private instance a deliberate click on
+     "Advanced → Go to … (unsafe)" is usually enough; for organizations we
+     recommend the Internal type.
+5. **OAuth client** (*Clients* / *Credentials* → *Create credentials* → *OAuth
    client ID*):
-   - typ aplikacji: **Web application**;
-   - *Authorized redirect URIs*: adres z punktu 1 dla Google;
-   - *Authorized JavaScript origins* nie są potrzebne.
-   Zapisz *Client ID* i *Client secret*.
-6. (Opcjonalnie) *APIs & Services* → *Library* → włącz **Gmail API** – nie jest
-   wymagane dla IMAP/SMTP, ale ułatwia późniejsze zmiany i podgląd limitów.
-7. U użytkowników: IMAP w Gmailu jest dziś zawsze włączony; w Google Workspace
-   administrator może go wyłączyć (*Admin console* → *Apps* → *Google
-   Workspace* → *Gmail* → *End user access* → *POP and IMAP access*) – musi być
-   dozwolony. Jeśli Workspace ogranicza dostęp aplikacji firm trzecich (*API
-   controls*), oznacz aplikację Silo jako zaufaną.
+   - application type: **Web application**;
+   - *Authorized redirect URIs*: the address from step 1 for Google;
+   - *Authorized JavaScript origins* are not needed.
+   Save the *Client ID* and the *Client secret*.
+6. (Optional) *APIs & Services* → *Library* → enable the **Gmail API** – it is
+   not required for IMAP/SMTP, but makes later changes and viewing quotas
+   easier.
+7. For users: IMAP in Gmail is always enabled today; in Google Workspace an
+   administrator can turn it off (*Admin console* → *Apps* → *Google
+   Workspace* → *Gmail* → *End user access* → *POP and IMAP access*) – it must
+   be allowed. If Workspace restricts third-party app access (*API
+   controls*), mark the Silo application as trusted.
 
-Konfiguracja Silo:
+Silo configuration:
 
 ```env
 SILO_OAUTH_GOOGLE_CLIENT_ID=1234567890-abc.apps.googleusercontent.com
 SILO_OAUTH_GOOGLE_CLIENT_SECRET=GOCSPX-...
 ```
 
-## 3. Microsoft 365 (Exchange Online) i Outlook.com
+## 3. Microsoft 365 (Exchange Online) and Outlook.com
 
-Wszystko w [Microsoft Entra admin center](https://entra.microsoft.com/)
-(dawniej Azure AD) na koncie z rolą co najmniej *Application Developer*
-(zgoda administratora: *Cloud Application Administrator* lub *Global
+Everything happens in the [Microsoft Entra admin center](https://entra.microsoft.com/)
+(formerly Azure AD), on an account with at least the *Application Developer*
+role (admin consent: *Cloud Application Administrator* or *Global
 Administrator*).
 
-1. **Rejestracja aplikacji:** *Identity* → *Applications* → *App
+1. **Application registration:** *Identity* → *Applications* → *App
    registrations* → *New registration*:
-   - nazwa (np. „Silo poczta”);
-   - *Supported account types* – od tego zależy `SILO_OAUTH_MICROSOFT_TENANT`:
+   - a name (e.g. "Silo mail");
+   - *Supported account types* – `SILO_OAUTH_MICROSOFT_TENANT` depends on it:
 
-     | Wybór w portalu | `SILO_OAUTH_MICROSOFT_TENANT` |
+     | Choice in the portal | `SILO_OAUTH_MICROSOFT_TENANT` |
      |---|---|
-     | Accounts in this organizational directory only (single tenant) | identyfikator katalogu (*Directory (tenant) ID*) lub domena, np. `example.onmicrosoft.com` |
+     | Accounts in this organizational directory only (single tenant) | the directory ID (*Directory (tenant) ID*) or the domain, e.g. `example.onmicrosoft.com` |
      | Accounts in any organizational directory (multitenant) | `organizations` |
-     | … and personal Microsoft accounts | `common` (domyślnie) |
+     | … and personal Microsoft accounts | `common` (default) |
 
-   - *Redirect URI*: platforma **Web**, adres z punktu 1 dla Microsoft.
-2. **Sekret:** *Certificates & secrets* → *New client secret*. Skopiuj
-   **Value** (nie *Secret ID*) – widać ją tylko raz. Sekret ma datę ważności
-   (maks. 24 miesiące): zapisz w kalendarzu jego wymianę; po wygaśnięciu nikt
-   nie doda ani nie odnowi konta, a istniejące konta przestaną się łączyć.
-3. **Uprawnienia:** *API permissions* → *Add a permission* → *Microsoft Graph*
-   → *Delegated permissions*, zaznacz:
+   - *Redirect URI*: platform **Web**, the address from step 1 for Microsoft.
+2. **Secret:** *Certificates & secrets* → *New client secret*. Copy the
+   **Value** (not the *Secret ID*) – it is shown only once. The secret has an
+   expiry date (max. 24 months): put its replacement in your calendar; after
+   it expires nobody can add or renew an account, and existing accounts stop
+   connecting.
+3. **Permissions:** *API permissions* → *Add a permission* → *Microsoft Graph*
+   → *Delegated permissions*, select:
    - `IMAP.AccessAsUser.All`
    - `SMTP.Send`
-   - `offline_access` (bez niego nie ma refresh tokenu)
+   - `offline_access` (without it there is no refresh token)
    - `openid`, `email`
-   Jeśli zasady katalogu nie pozwalają użytkownikom samodzielnie wyrażać zgody,
-   kliknij **Grant admin consent for <organizacja>**.
-4. *Overview*: skopiuj **Application (client) ID** (oraz *Directory (tenant)
-   ID* dla aplikacji jednego katalogu).
-5. **Exchange Online – SMTP AUTH.** W nowych dzierżawach uwierzytelnione
-   wysyłanie SMTP (SMTP AUTH) jest domyślnie wyłączone. Włącz je dla skrzynek
-   używanych w Silo (PowerShell, moduł ExchangeOnlineManagement):
+   If the directory policy does not let users consent on their own, click
+   **Grant admin consent for <organization>**.
+4. *Overview*: copy the **Application (client) ID** (and the *Directory
+   (tenant) ID* for a single-directory application).
+5. **Exchange Online – SMTP AUTH.** In new tenants, authenticated SMTP sending
+   (SMTP AUTH) is disabled by default. Enable it for the mailboxes used in
+   Silo (PowerShell, the ExchangeOnlineManagement module):
 
    ```powershell
    Connect-ExchangeOnline
-   # dla jednej skrzynki:
+   # for a single mailbox:
    Set-CASMailbox -Identity jan@example.com -SmtpClientAuthenticationDisabled $false
-   # lub dla całej organizacji:
+   # or for the whole organization:
    Set-TransportConfig -SmtpClientAuthenticationDisabled $false
    ```
 
-   W *Microsoft 365 admin center* to samo: *Users* → użytkownik → *Mail* →
-   *Manage email apps* → **Authenticated SMTP** oraz **IMAP** zaznaczone.
-   IMAP musi być włączony (`Set-CASMailbox -ImapEnabled $true`).
-   Wyłączone *Security defaults* nie są potrzebne: XOAUTH2 to nowoczesne
-   uwierzytelnianie.
-6. Konta prywatne Outlook.com (`TENANT=common` lub `consumers`) nie były
-   jeszcze sprawdzone z Silo (serwery `outlook.office365.com` /
-   `smtp.office365.com`); traktuj je jako eksperymentalne.
+   The same in the *Microsoft 365 admin center*: *Users* → the user → *Mail* →
+   *Manage email apps* → **Authenticated SMTP** and **IMAP** checked.
+   IMAP must be enabled (`Set-CASMailbox -ImapEnabled $true`).
+   Disabling *Security defaults* is not needed: XOAUTH2 is modern
+   authentication.
+6. Private Outlook.com accounts (`TENANT=common` or `consumers`) have not yet
+   been checked with Silo (servers `outlook.office365.com` /
+   `smtp.office365.com`); treat them as experimental.
 
-Konfiguracja Silo:
+Silo configuration:
 
 ```env
 SILO_OAUTH_MICROSOFT_CLIENT_ID=00000000-0000-0000-0000-000000000000
@@ -160,58 +162,59 @@ SILO_OAUTH_MICROSOFT_CLIENT_SECRET=abc~...
 SILO_OAUTH_MICROSOFT_TENANT=organizations
 ```
 
-## 4. Uruchomienie i sprawdzenie
+## 4. Starting and checking
 
-- Identyfikator i sekret dostawcy podaje się **razem**; tylko jeden z nich to
-  błąd konfiguracji (Silo nie wystartuje i wypisze, czego brakuje).
-- Zmienne dopisz do `.env` i uruchom `docker compose up -d` (kontener
-  `silo-server` zostanie odtworzony z nową konfiguracją). Potem
-  `GET /api/v1/meta` zwraca `"oauthProviders": ["google", "microsoft"]`
-  (tylko skonfigurowanych) – silo-web pokazuje wtedy przyciski logowania przy
-  dodawaniu konta.
-- Zmienne `SILO_OAUTH_*_AUTH_URL`, `*_TOKEN_URL`, `*_USERINFO_URL` służą
-  wyłącznie testom (atrapa dostawcy) – w produkcji ich nie ustawiaj.
-- Silo łączy się z serwerami dostawców (`imap.gmail.com:993`,
+- A provider's client ID and secret are set **together**; only one of them is
+  a configuration error (Silo will not start and prints what is missing).
+- Add the variables to `.env` and run `docker compose up -d` (the
+  `silo-server` container is recreated with the new configuration). Then
+  `GET /api/v1/meta` returns `"oauthProviders": ["google", "microsoft"]`
+  (only the configured ones) – silo-web then shows the sign-in buttons when
+  adding an account.
+- The variables `SILO_OAUTH_*_AUTH_URL`, `*_TOKEN_URL`, `*_USERINFO_URL` are
+  for tests only (a fake provider) – do not set them in production.
+- Silo connects to the providers' servers (`imap.gmail.com:993`,
   `smtp.gmail.com:465`, `outlook.office365.com:993`, `smtp.office365.com:587`)
-  oraz z ich serwerami tokenów (`oauth2.googleapis.com`,
-  `login.microsoftonline.com`) – zapora musi na to pozwalać.
+  and to their token servers (`oauth2.googleapis.com`,
+  `login.microsoftonline.com`) – the firewall must allow this.
 
-## 5. Co widzi użytkownik i co się dzieje później
+## 5. What the user sees and what happens later
 
-- Dodanie konta: „Zaloguj przez Google/Microsoft” → strona dostawcy → zgoda →
-  powrót do Silo. Silo od razu sprawdza IMAP i SMTP; jeśli test się nie uda,
-  konto nie powstaje (kod `account_test_failed`, np. wyłączony SMTP AUTH w
-  Exchange).
-- Wygaśnięcie lub odwołanie dostępu (zmiana hasła konta Google, odwołanie
-  aplikacji w ustawieniach bezpieczeństwa konta, tryb *Testing* po 7 dniach,
-  wygasły sekret klienta po stronie Microsoft): konto przechodzi w stan
-  `auth_failed` z komunikatem „OAuth authorization expired; sign in again”.
-  Synchronizacja stoi, wysyłka kończy się błędem; użytkownik klika „Zaloguj
-  ponownie” przy koncie i loguje się **tym samym** adresem.
-- Odwołanie dostępu Silo do skrzynki: konto Google → *Bezpieczeństwo* →
-  *Połączenia z aplikacjami innych firm*; Microsoft: *myapps.microsoft.com* /
-  *account.live.com/consent/Manage* albo administrator w Entra (*Enterprise
-  applications* → aplikacja → *Users and groups* / usunięcie zgody).
-  Usunięcie konta w Silo nie odwołuje zgody u dostawcy – zrób to tam.
-- Kopie wysłanych wiadomości: Gmail i Exchange Online same zapisują wysłaną
-  pocztę w folderze Wysłane, dlatego Silo domyślnie nie dokłada własnej kopii
-  (`sentAppend` wyłączone).
+- Adding an account: "Sign in with Google/Microsoft" → the provider's page →
+  consent → back to Silo. Silo immediately checks IMAP and SMTP; if the test
+  fails, the account is not created (code `account_test_failed`, e.g. SMTP
+  AUTH disabled in Exchange).
+- Expired or revoked access (a Google account password change, revoking the
+  app in the account's security settings, *Testing* mode after 7 days, an
+  expired client secret on the Microsoft side): the account goes to the
+  `auth_failed` state with the message "OAuth authorization expired; sign in
+  again". Synchronization stops, sending fails; the user clicks "Sign in
+  again" on the account and signs in with **the same** address.
+- Revoking Silo's access to a mailbox: Google Account → *Security* →
+  *Third-party apps & services*; Microsoft: *myapps.microsoft.com* /
+  *account.live.com/consent/Manage*, or an administrator in Entra
+  (*Enterprise applications* → the application → *Users and groups* / remove
+  consent). Deleting the account in Silo does not revoke the consent at the
+  provider – do it there.
+- Copies of sent messages: Gmail and Exchange Online store sent mail in the
+  Sent folder themselves, so by default Silo does not add its own copy
+  (`sentAppend` disabled).
 
-## 6. Gmail bez trybu `provider=gmail`
+## 6. Gmail without mode `provider=gmail`
 
-Pełny tryb Gmaila (etykiety Gmaila jako etykiety Silo, wątki Gmaila) jest
-planowany na 1.1. Do tego czasu konto Gmail działa w trybie ogólnym: Silo
-widzi skrzynkę odbiorczą i foldery specjalne (`[Gmail]/Wszystkie`, Wysłane,
-Wersje robocze, Kosz, Spam); ta sama wiadomość w Odebranych i we Wszystkich
-jest w Silo jedną wiadomością; archiwizacja zdejmuje etykietę „Odebrane”
-(kopia we „Wszystkich” zostaje). Etykiety założone w Gmailu nie są widoczne
-w Silo, a wątki Silo buduje sam i mogą nieznacznie różnić się od wątków w
-Gmailu.
+The full Gmail mode (Gmail labels as Silo labels, Gmail threads) is planned
+for 1.1. Until then a Gmail account works in generic mode: Silo sees the
+inbox and the special folders (`[Gmail]/All Mail`, Sent, Drafts, Trash,
+Spam); the same message in the Inbox and in All Mail is a single message in
+Silo; archiving removes the "Inbox" label (the copy in All Mail remains).
+Labels created in Gmail are not visible in Silo, and Silo builds threads on
+its own, so they may differ slightly from the threads in Gmail.
 
-## 7. Test ręczny po konfiguracji
+## 7. Manual test after configuration
 
-Ani Gmail, ani Microsoft 365 nie były jeszcze sprawdzone na żywo (CI używa
-atrapy dostawcy i Dovecota z `passdb oauth2`). Po pierwszej konfiguracji
-przejdź scenariusz z [macierzy kompatybilności](../compat-matrix.md#2-serwery-pocztowe-imapsmtp)
-(dodanie konta, initial sync, archiwizacja, etykieta, wysyłka, odpowiedź z
-innego klienta, odwołanie dostępu) i zgłoś wynik, żeby uzupełnić macierz.
+Neither Gmail nor Microsoft 365 has been checked live yet (CI uses a fake
+provider and Dovecot with `passdb oauth2`). After the first configuration,
+go through the scenario from the [compatibility matrix](../compat-matrix.md#oauth2-and-xoauth2-phase-5)
+(adding an account, initial sync, archive, a label, sending, a reply from
+another client, revoking access) and report the result, so that the matrix
+can be completed.

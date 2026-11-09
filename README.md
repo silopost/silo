@@ -367,8 +367,7 @@ described in the [silo-server README](https://github.com/silopost/silo-server#te
 
 ## Running in production
 
-The [administrator guide](docs/admin/README.md) is the full reference (currently written in
-Polish). The essentials follow.
+The [administrator guide](docs/admin/README.md) is the full reference. The essentials follow.
 
 ### The stack
 
@@ -382,6 +381,11 @@ volumes with the dev project `silo`:
 | `blobs-init` | `alpine:3.22` | One-shot `chown` of the `blobs` volume for the nonroot (65532) server image. |
 | `silo-server` | `ghcr.io/silopost/silo-server:${SILO_SERVER_TAG}` | Distroless, nonroot, no host port; migrations at start-up under a Postgres advisory lock; `json-file` logs rotated at 10 MB × 5. |
 | `silo-web` | `ghcr.io/silopost/silo-web:${SILO_WEB_TAG}` | Static build served by nginx inside the image. |
+
+The images are published by the `release.yml` GitHub Actions workflow of `silo-server` and
+`silo-web`: a `vX.Y.Z` tag publishes `:X.Y.Z`, `:X.Y` and `:latest` (amd64/arm64), and a push to
+`main` publishes `:edge`. A new GHCR package has to be made public once (Package settings → Change
+visibility), otherwise `docker pull` without signing in to `ghcr.io` fails.
 
 To build the images from the sibling repositories instead of pulling them (before images are
 published, or to test the production stack):
@@ -581,7 +585,6 @@ silo/
 └── docs/
     ├── adr/                      # architecture decision records
     ├── admin/                    # administrator guide, backup, OAuth2
-    ├── history/                  # archive of phase notes
     ├── compat-matrix.md          # version and mail server compatibility
     └── threat-model.md
 ```
@@ -612,7 +615,7 @@ Silopost is pre-1.0. The scope planned for 1.0 is implemented (`silo` 0.5.0 with
 
 - **Gmail and Microsoft 365 (OAuth2/XOAUTH2) have not been tested against live accounts** – only
   against a fake provider and Dovecot with `AUTH=XOAUTH2`. The manual test steps are in the
-  [compatibility matrix](docs/compat-matrix.md#oauth2-i-xoauth2-faza-5).
+  [compatibility matrix](docs/compat-matrix.md#oauth2-and-xoauth2-phase-5).
 - Gmail accounts sync in generic IMAP mode: Gmail labels other than the special folders are not
   mapped to Silo labels, and threads are built by Silo, not by Gmail.
 - Not verified: migrating blobs from `fs` to `s3`, fail2ban on a live host.
@@ -631,16 +634,11 @@ silo-mobile push notifications, an offline cache and signed APK/AAB builds (F-Dr
 
 ## Documentation
 
-The documents below are currently written in Polish.
-
 - [docs/admin/](docs/admin/README.md) – administrator guide: production installation, mode `local`,
   app passwords, upgrades, [backup](docs/admin/backup.md), S3, hardening, [OAuth2](docs/admin/oauth.md)
 - [docs/adr/](docs/adr/README.md) – architecture decision records
 - [docs/compat-matrix.md](docs/compat-matrix.md) – compatibility of versions and mail servers
 - [docs/threat-model.md](docs/threat-model.md) – threat model
-- [docs/history/](docs/history/FAZA4-NOTES.md) – archive of phase notes
-  ([phase 4](docs/history/FAZA4-NOTES.md), [phase 5](docs/history/FAZA5-NOTES.md),
-  [silo-mobile](docs/history/SILO-MOBILE-NOTES.md))
 
 ## Contributing
 

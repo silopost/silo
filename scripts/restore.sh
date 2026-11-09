@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# Odtworzenie instancji Silo z backupu scripts/backup.sh (stos docker compose).
+# Restores a Silo instance from a scripts/backup.sh backup (docker compose stack).
 #
-# Uzycie: scripts/restore.sh metadata FILE.json [--merge]
-#         scripts/restore.sh full FILE.dump [BLOBS.tar.gz] [--yes]
-#   metadata  na uruchomionym stosie z PUSTA baza (bez uzytkownikow; --merge: do istniejacych):
-#             `migrate up`, potem `silo-server import-metadata`. Konta startuja initial sync;
-#             etykiety uzytkownika i snooze wracaja w miare synchronizacji (job metadata_restore).
-#   full      zatrzymuje silo-server, pg_restore --clean --if-exists calej bazy, opcjonalnie
-#             zastepuje zawartosc wolumenu blobow archiwum, uruchamia silo-server.
-#             Nadpisuje dane: pyta o potwierdzenie (--yes pomija pytanie; wymagane bez terminala).
-# Srodowisko: SILO_COMPOSE_FILE (domyslnie docker-compose.yml), COMPOSE_PROJECT_NAME (jak w compose),
-#   SILO_TAR_IMAGE (domyslnie alpine:3.22), SILO_BLOBS_VOLUME (nazwa wolumenu, gdy nie da sie jej ustalic).
-# Wymaga tego samego SILO_SECRET_KEY co instancja, z ktorej pochodzi backup (hasla skrzynek i TOTP
-# sa nim zaszyfrowane). Gdy obok pliku lezy FILE.sha256, suma jest sprawdzana.
+# Usage: scripts/restore.sh metadata FILE.json [--merge]
+#        scripts/restore.sh full FILE.dump [BLOBS.tar.gz] [--yes]
+#   metadata  on a running stack with an EMPTY database (no users; --merge: into existing ones):
+#             `migrate up`, then `silo-server import-metadata`. Accounts start an initial sync;
+#             user labels and snoozes come back as synchronization progresses (job metadata_restore).
+#   full      stops silo-server, pg_restore --clean --if-exists of the whole database, optionally
+#             replaces the contents of the blob volume with the archive, starts silo-server.
+#             Overwrites data: asks for confirmation (--yes skips the question; required without a terminal).
+# Environment: SILO_COMPOSE_FILE (default docker-compose.yml), COMPOSE_PROJECT_NAME (as in compose),
+#   SILO_TAR_IMAGE (default alpine:3.22), SILO_BLOBS_VOLUME (the volume name, when it cannot be determined).
+# Requires the same SILO_SECRET_KEY as the instance the backup comes from (mailbox passwords and TOTP
+# are encrypted with it). When FILE.sha256 lies next to the file, the checksum is verified.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-export MSYS_NO_PATHCONV=1 # Git Bash na Windows nie moze "poprawiac" sciezek w argumentach docker
+export MSYS_NO_PATHCONV=1 # Git Bash on Windows must not "fix" paths in docker arguments
 
 COMPOSE=(docker compose -f "${SILO_COMPOSE_FILE:-docker-compose.yml}")
 TAR_IMAGE="${SILO_TAR_IMAGE:-alpine:3.22}"
@@ -67,7 +67,7 @@ verify_checksum() {
   echo "suma kontrolna $f: OK"
 }
 
-# Polecenie bez szumu postepu compose; wyjscie pokazywane tylko przy bledzie.
+# A command without compose progress noise; output shown only on error.
 quiet() {
   local out
   out="$("$@" 2>&1)" || { printf "%s
@@ -77,11 +77,11 @@ quiet() {
 running() { [ -n "$("${COMPOSE[@]}" ps --status running -q "$1")" ]; }
 
 psql_q() {
-  # shellcheck disable=SC2016 # zmienne rozwija powloka kontenera postgres
+  # shellcheck disable=SC2016 # the postgres container's shell expands the variables
   "${COMPOSE[@]}" exec -T postgres sh -c 'psql -X -q -tA -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "$1"' sh "$1"
 }
 
-# Obraz prod jest distroless (bez powloki): exec bezposrednio na binarce.
+# The prod image is distroless (no shell): exec the binary directly.
 silo_cli() { "${COMPOSE[@]}" exec -T silo-server /silo-server "$@"; }
 
 blobs_volume() {
@@ -103,7 +103,7 @@ for f in "${FILES[@]}"; do verify_checksum "$f"; done
 
 if [ "$MODE" = metadata ]; then
   running silo-server || die "silo-server nie dziala (${COMPOSE[*]} up -d)"
-  # serve stosuje migracje przy starcie; `migrate up` jest idempotentne i gwarantuje schemat.
+  # serve applies migrations at start-up; `migrate up` is idempotent and guarantees the schema.
   silo_cli migrate up > /dev/null || die "migrate up nie powiodlo sie"
   echo "schemat: $(silo_cli migrate version | tr -d '\r')"
   users="$(psql_q 'SELECT count(*) FROM users' | tr -d '\r ')"
@@ -132,12 +132,12 @@ if running silo-server; then
   quiet "${COMPOSE[@]}" stop silo-server
 fi
 echo "pg_restore ${FILES[0]}..."
-# shellcheck disable=SC2016 # zmienne rozwija powloka kontenera postgres
+# shellcheck disable=SC2016 # the postgres container's shell expands the variables
 "${COMPOSE[@]}" exec -T postgres sh -c 'pg_restore --clean --if-exists --no-owner -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "${FILES[0]}" ||
   die "pg_restore nie powiodl sie (silo-server pozostaje zatrzymany)"
 
 if [ ${#FILES[@]} -eq 2 ]; then
-  # Kontener (i wolumen) moze jeszcze nie istniec: utworz bez uruchamiania.
+  # The container (and the volume) may not exist yet: create it without starting.
   [ -n "$("${COMPOSE[@]}" ps -aq silo-server)" ] || quiet "${COMPOSE[@]}" up --no-start silo-server
   vol="$(blobs_volume)"
   [ -n "$vol" ] || die "nie znaleziono wolumenu blobow; ustaw SILO_BLOBS_VOLUME"

@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Smoke e2e na dzialajacym stosie dev (docker-compose.dev.yml), DoD fazy 2:
-#   1. logowanie -> niepusta lista INBOX przez API   < SILO_E2E_LIST_MAX_MS  (domyslnie 10000)
-#   2. swaks -> dev1@ -> `event: message.new` w SSE  < SILO_E2E_EVENT_MAX_MS (domyslnie 2000)
-# Wymaga: stos (scripts/dev-up.sh), curl, docker compose; swaks jest w kontenerze mailserver.
-# Pelny pomiar initial sync: swiezy stos z wyslanym seedem (scripts/seed-mail.sh) PRZED pierwszym
-# logowaniem (konto Silo powstaje przy pierwszym logowaniu); na kolejnych przebiegach lista jest od razu.
-# Opcje srodowiskowe: SILO_E2E_BASE (domyslnie http://localhost:$SILO_DEV_SERVER_PORT z .env),
-# SILO_E2E_USER/SILO_E2E_PASSWORD (dev1@silo.test / devpass1), SILO_E2E_MIN_INBOX (domyslnie 0).
-# Kod wyjscia: 0 = progi dotrzymane, 1 = przekroczony prog lub blad, 2 = stos niedostepny.
-# DoD Fazy 3 (UI, wysylka, undo, drafty, offline, a11y) sprawdza Playwright w silo-web: `npm run e2e`
-# (README silo-web, sekcja "End-to-end tests"); ten skrypt pozostaje szybkim smoke API z Fazy 2.
-# DoD Fazy 4 (wyszukiwanie, snooze, schedule send, filtry, etykiety jako keywords, ustawienia, skroty)
-# sprawdzaja pliki Playwright silo-web: e2e/{search,snooze,filters,schedule-send,labels-keywords,
-# settings,shortcuts}.e2e.ts (`npm run e2e -- --grep-invert @slow` bez testow czekajacych 2-4 min).
+# E2E smoke test on a running dev stack (docker-compose.dev.yml), phase 2 definition of done:
+#   1. sign-in -> non-empty INBOX list through the API   < SILO_E2E_LIST_MAX_MS  (default 10000)
+#   2. swaks -> dev1@ -> `event: message.new` over SSE   < SILO_E2E_EVENT_MAX_MS (default 2000)
+# Requires: the stack (scripts/dev-up.sh), curl, docker compose; swaks is in the mailserver container.
+# Full initial sync measurement: a fresh stack with the seed sent (scripts/seed-mail.sh) BEFORE the first
+# sign-in (the Silo account is created at the first sign-in); on later runs the list is there immediately.
+# Environment options: SILO_E2E_BASE (default http://localhost:$SILO_DEV_SERVER_PORT from .env),
+# SILO_E2E_USER/SILO_E2E_PASSWORD (dev1@silo.test / devpass1), SILO_E2E_MIN_INBOX (default 0).
+# Exit code: 0 = thresholds met, 1 = threshold exceeded or error, 2 = stack unavailable.
+# The phase 3 definition of done (UI, sending, undo, drafts, offline, a11y) is checked by Playwright in
+# silo-web: `npm run e2e` (silo-web README, section "End-to-end tests"); this script stays a quick API smoke test.
+# The phase 4 definition of done (search, snooze, schedule send, filters, labels as keywords, settings,
+# shortcuts) is checked by the silo-web Playwright files e2e/{search,snooze,filters,schedule-send,labels-keywords,
+# settings,shortcuts}.e2e.ts (`npm run e2e -- --grep-invert @slow` without the tests that wait 2-4 min).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,7 +33,7 @@ COMPOSE=(docker compose -f docker-compose.dev.yml)
 
 tmp="$(mktemp -d)"
 sse_pid=""
-# shellcheck disable=SC2329 # wywolywana przez trap
+# shellcheck disable=SC2329 # called by trap
 cleanup() {
   [ -n "$sse_pid" ] && kill "$sse_pid" 2> /dev/null || true
   rm -rf "$tmp"
@@ -45,7 +45,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 curl -fsS --max-time 5 "$BASE/healthz" > /dev/null 2>&1 || { echo "silo-server niedostepny pod $BASE (scripts/dev-up.sh?)" >&2; exit 2; }
 
-# 1. Logowanie i initial sync.
+# 1. Sign-in and initial sync.
 t0=$(now_ms)
 curl -fsS --max-time 30 -c "$tmp/cookies" -X POST "$BASE/api/v1/session" \
   -H 'Content-Type: application/json' \
@@ -68,7 +68,7 @@ done
 [ "$list_ms" -ge 0 ] || fail "lista INBOX pusta po $((($(now_ms) - t0) / 1000)) s (czy seed zostal wyslany? scripts/seed-mail.sh)"
 echo "login: ${t_login} ms; login -> niepusta lista INBOX ($n_threads watkow): ${list_ms} ms (prog ${LIST_MAX_MS} ms)"
 
-# 2. SSE: otwieramy strumien, wysylamy swaks, mierzymy czas do message.new.
+# 2. SSE: open the stream, send with swaks, measure the time to message.new.
 (curl -sN -b "$tmp/cookies" "$BASE/api/v1/events" |
   while IFS= read -r line; do
     case "$line" in event:*) echo "$(now_ms) $line" >> "$tmp/sse.log" ;; esac
@@ -79,9 +79,9 @@ sleep 1
 base_events="$(grep -c 'message.new' "$tmp/sse.log" || true)"
 
 subject="silo e2e smoke $(date +%s)"
-# Czas startu kontenerowego `docker compose exec` (~1-2 s na Windows) nie jest czescia dostarczania:
-# liczymy od momentu, w ktorym swaks zglosil przyjecie wiadomosci przez Postfix (koniec exec),
-# a ponadto raportujemy czas od startu polecenia.
+# The start-up time of `docker compose exec` (~1-2 s on Windows) is not part of delivery:
+# we count from the moment swaks reported that Postfix accepted the message (end of exec),
+# and additionally report the time from the start of the command.
 t_send0=$(now_ms)
 "${COMPOSE[@]}" exec -T mailserver swaks --server localhost --port 25 \
   --from smoke@example.com --to "$USER_EMAIL" \

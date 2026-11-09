@@ -1,4 +1,4 @@
-# Wspólna konwencja dla repo silo, silo-server i silo-web (źródło: silo/CONTRIBUTING.md)
+# Shared convention for the silo, silo-server, silo-web and silo-mobile repositories (source: silo/CONTRIBUTING.md)
 root = true
 
 [*]

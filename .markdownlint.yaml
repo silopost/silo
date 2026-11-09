@@ -1,4 +1,4 @@
-# Luzna konfiguracja: dokumentacja po polsku, tabele i dlugie linie dozwolone.
+# Relaxed configuration: tables and long lines allowed.
 default: true
 MD013: false
 MD033: false

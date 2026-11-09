@@ -1,33 +1,33 @@
-# Backup i odtwarzanie
+# Backup and restore
 
-Postgres Silo trzyma dwa rodzaje danych ([plan 3.3](../../ARCHITECTURE_AND_PLAN.md#33-źródło-prawdy-serwer-imap-vs-postgres)): **cache** poczty (wiadomości, foldery, wątki, etykiety systemowe, bloby mirrora), który synchronizacja odbudowuje z serwera IMAP, oraz **metadane** istniejące tylko w Silo. Poczta jest na serwerze IMAP – jego backup to zadanie administratora serwera poczty.
+Silo's Postgres holds two kinds of data: a **cache** of mail (messages, folders, threads, system labels, mirror blobs), which synchronization rebuilds from the IMAP server, and **metadata** that exists only in Silo (the IMAP server is the source of truth for mail, [ADR 0005](../adr/0005-imap-source-of-truth.md)). The mail itself is on the IMAP server – backing it up is the job of the mail server's administrator.
 
-Skrypty `scripts/backup.sh` i `scripts/restore.sh` działają na stosie `docker compose` (plik z `SILO_COMPOSE_FILE`, domyślnie produkcyjny `docker-compose.yml`; w dev `SILO_COMPOSE_FILE=docker-compose.dev.yml`), także z obrazem distroless. Format metadanych: [ADR 0014](../adr/0014-metadata-backup-format.md); szczegóły eksportu i importu: README `silo-server`, sekcja „Backup and restore”.
+The scripts `scripts/backup.sh` and `scripts/restore.sh` work on the `docker compose` stack (the file from `SILO_COMPOSE_FILE`, by default the production `docker-compose.yml`; in dev `SILO_COMPOSE_FILE=docker-compose.dev.yml`), also with the distroless image. Metadata format: [ADR 0014](../adr/0014-metadata-backup-format.md); details of export and import: the `silo-server` README, section "Backup and restore".
 
 ```sh
-scripts/backup.sh metadata --out backups/        # domyślny tryb; --user EMAIL: jeden użytkownik
-scripts/backup.sh full --out backups/            # pg_dump -Fc całej bazy + tar.gz wolumenu blobów
+scripts/backup.sh metadata --out backups/        # default mode; --user EMAIL: a single user
+scripts/backup.sh full --out backups/            # pg_dump -Fc of the whole database + tar.gz of the blob volume
 scripts/restore.sh metadata backups/silo-metadata-<ts>.json [--merge]
 scripts/restore.sh full backups/silo-db-<ts>.dump [backups/silo-blobs-<ts>.tar.gz] [--yes]
 ```
 
-| Tryb | Zawiera | Odtworzenie |
+| Mode | Contains | Restore |
 |---|---|---|
-| `metadata` | JSON z `silo-server export-metadata`: użytkownicy (hash hasła, ustawienia, TOTP), konta (konfiguracja i zaszyfrowany sekret skrzynki), etykiety użytkownika z przypisaniami i snooze (po Message-ID), filtry (etykiety po nazwie), kontakty ręczne, historia wyszukiwań, drafty i wiadomości zaplanowane z załącznikami | na pustą, zmigrowaną bazę: `import-metadata`; konta robią initial sync, etykiety i snooze wracają w miarę synchronizacji (job `metadata_restore`), wiadomości zaplanowane wracają do kolejki na swój czas |
-| `full` | `pg_dump -Fc` całej bazy (cache i metadane) oraz archiwum wolumenu blobów | zatrzymanie `silo-server`, `pg_restore --clean --if-exists`, podmiana zawartości wolumenu blobów, start; nadpisuje dane, więc pyta o potwierdzenie (`--yes`) |
+| `metadata` | JSON from `silo-server export-metadata`: users (password hash, settings, TOTP), accounts (configuration and the encrypted mailbox secret), user labels with assignments and snoozes (by Message-ID), filters (labels by name), manual contacts, search history, drafts and scheduled messages with attachments | into an empty, migrated database: `import-metadata`; accounts run an initial sync, labels and snoozes come back as synchronization progresses (job `metadata_restore`), scheduled messages go back to the queue for their time |
+| `full` | `pg_dump -Fc` of the whole database (cache and metadata) and an archive of the blob volume | stop `silo-server`, `pg_restore --clean --if-exists`, replace the contents of the blob volume, start; it overwrites data, so it asks for confirmation (`--yes`) |
 
-Każdy plik dostaje `.sha256`; `restore.sh` sprawdza sumę, gdy plik leży obok.
+Every file gets a `.sha256`; `restore.sh` verifies the checksum when the file is next to it.
 
-## Czego nie ma w backupie
+## What is not in the backup
 
-- **`SILO_SECRET_KEY`** – hasła skrzynek, tokeny OAuth2 i sekrety TOTP są nim zaszyfrowane. Przechowuj klucz **osobno** od backupów (menedżer haseł, sejf, inny nośnik); odtwarzaj z tym samym kluczem (albo z nim jako `SILO_SECRET_KEY_PREVIOUS`). Bez klucza użytkownicy muszą ponownie podać hasła skrzynek i zalogować się przez OAuth2.
-- `metadata`: sesje (użytkownicy logują się ponownie), zdarzenia, joby, cache poczty (odtwarza sync), operacje write-back jeszcze niezapisane na serwerze (`imap_op`, np. archiwizacja w oknie undo) – `backup.sh` czeka do 60 s (`SILO_BACKUP_WAIT`) na pustą kolejkę, potem ostrzega i eksportuje.
-- Bucket S3 przy `SILO_BLOB_BACKEND=s3` – `full` archiwizuje tylko wolumen; bucket zabezpiecz narzędziami dostawcy (wersjonowanie, replikacja, `mc mirror`).
-- Pliki `.env` i `Caddyfile` – trzymaj w repozytorium konfiguracji lub kopii hosta (`.env` zawiera klucz, więc osobno od backupów bazy).
+- **`SILO_SECRET_KEY`** – mailbox passwords, OAuth2 tokens and TOTP secrets are encrypted with it. Keep the key **separately** from the backups (password manager, safe, another medium); restore with the same key (or with it as `SILO_SECRET_KEY_PREVIOUS`). Without the key, users have to enter their mailbox passwords again and sign in through OAuth2 again.
+- `metadata`: sessions (users sign in again), events, jobs, the mail cache (restored by sync), write-back operations not yet written to the server (`imap_op`, e.g. an archive within the undo window) – `backup.sh` waits up to 60 s (`SILO_BACKUP_WAIT`) for an empty queue, then warns and exports.
+- The S3 bucket with `SILO_BLOB_BACKEND=s3` – `full` archives only the volume; protect the bucket with the provider's tools (versioning, replication, `mc mirror`).
+- The `.env` and `Caddyfile` files – keep them in a configuration repository or a host copy (`.env` contains the key, so separately from the database backups).
 
-## Harmonogram
+## Schedule
 
-`metadata` jest mały (kilka–kilkaset kB na użytkownika plus załączniki draftów) – codziennie; `full` (rozmiar skrzynek) – tygodniowo albo przed upgrade. Przykład `/etc/cron.d/silo-backup` (instalacja w `/opt/silo`):
+`metadata` is small (a few to a few hundred kB per user plus draft attachments) – daily; `full` (the size of the mailboxes) – weekly or before an upgrade. Example `/etc/cron.d/silo-backup` (installation in `/opt/silo`):
 
 ```text
 15 3 * * *  root  cd /opt/silo && scripts/backup.sh metadata --out /var/backups/silo >> /var/log/silo-backup.log 2>&1
@@ -35,28 +35,28 @@ Każdy plik dostaje `.sha256`; `restore.sh` sprawdza sumę, gdy plik leży obok.
 30 4 * * *  root  find /var/backups/silo -name 'silo-*' -mtime +30 -delete
 ```
 
-Backup zawiera hashe haseł, zaszyfrowane sekrety i treść draftów: katalog z prawami `0700`, kopia poza hostem zaszyfrowana (np. `age`, `gpg`, `restic`).
+A backup contains password hashes, encrypted secrets and draft content: a directory with `0700` permissions, an encrypted off-host copy (e.g. `age`, `gpg`, `restic`).
 
-## Odtworzenie krok po kroku
+## Step-by-step restore
 
-**Z backupu `metadata`** (nowy host lub utracona baza):
+**From a `metadata` backup** (a new host or a lost database):
 
-1. Instalacja jak w [README](README.md#instalacja-produkcyjna), z **tym samym** `SILO_SECRET_KEY` w `.env`.
-2. `docker compose up -d` – `silo-server` tworzy pustą bazę i wykonuje migracje. W trybie `imap` **nie loguj się przed importem** (logowanie zakłada użytkownika).
-3. `scripts/restore.sh metadata /var/backups/silo/silo-metadata-<ts>.json` (sprawdza sumę, schemat i pustą bazę; `--merge` importuje do istniejących użytkowników bez duplikatów).
-4. Konta startują initial sync przy najbliższym przeglądzie managera (do ok. 20 s). Etykiety i snooze wracają w miarę synchronizacji; job `metadata_restore` ponawia co minutę do 24 h, potem jest `dead` w panelu admina (niedopasowane wiersze zostają z `last_error`).
-5. Użytkownicy logują się ponownie (sesje nie są w backupie).
+1. Install as in the [README](README.md#production-installation), with **the same** `SILO_SECRET_KEY` in `.env`.
+2. `docker compose up -d` – `silo-server` creates an empty database and runs the migrations. In mode `imap` **do not sign in before the import** (signing in creates the user).
+3. `scripts/restore.sh metadata /var/backups/silo/silo-metadata-<ts>.json` (checks the checksum, the schema and that the database is empty; `--merge` imports into existing users without duplicates).
+4. Accounts start an initial sync at the manager's next pass (up to about 20 s). Labels and snoozes come back as synchronization progresses; the `metadata_restore` job retries every minute for up to 24 h, then it is `dead` in the admin panel (unmatched rows remain with `last_error`).
+5. Users sign in again (sessions are not in the backup).
 
-**Z backupu `full`:** `scripts/restore.sh full silo-db-<ts>.dump silo-blobs-<ts>.tar.gz` na działającym stosie tej samej wersji (zatrzymuje `silo-server`, odtwarza bazę i bloby, uruchamia go). Po restore starszej wersji niż obrazy – najpierw wróć do tagów z czasu backupu.
+**From a `full` backup:** `scripts/restore.sh full silo-db-<ts>.dump silo-blobs-<ts>.tar.gz` on a running stack of the same version (it stops `silo-server`, restores the database and the blobs, and starts it). When restoring a version older than the images – first go back to the tags from the time of the backup.
 
-**Uszkodzony cache jednego konta** (rozjazd z serwerem, utracone bloby): bez restore – `silo-server rebuild-cache --account N` ([README, sekcja „Odbudowa cache konta”](README.md#odbudowa-cache-konta-rebuild-cache)). Brakujące bloby mirrora są też pobierane ponownie z IMAP przy pierwszym odczycie.
+**A damaged cache of a single account** (drift from the server, lost blobs): no restore needed – `silo-server rebuild-cache --account N` ([README, section "Account cache rebuild"](README.md#account-cache-rebuild-rebuild-cache)). Missing mirror blobs are also fetched again from IMAP on first read.
 
-## Ograniczenia
+## Limitations
 
-- Draft otwarty z kopii w Drafts zapisanej przez inny klient (bez `X-Silo-Draft-Id`) wraca jako lokalny draft obok tej kopii (duplikat do usunięcia ręcznie).
-- Wiadomości bez nagłówka `Message-ID` nie odzyskają etykiet tylko-lokalnych (`local_only`/`partial`); etykiety zapisane jako keywords wracają z serwera.
-- Snooze, którego czas minął w trakcie przerwy, budzi się zaraz po odtworzeniu.
+- A draft opened from a copy in Drafts saved by another client (without `X-Silo-Draft-Id`) comes back as a local draft next to that copy (a duplicate to delete by hand).
+- Messages without a `Message-ID` header do not get local-only labels (`local_only`/`partial`) back; labels stored as keywords come back from the server.
+- A snooze whose time passed during the outage wakes up right after the restore.
 
-## Test end-to-end
+## End-to-end test
 
-`scripts/e2e-backup-restore.sh` przechodzi DoD Fazy 5 na osobnym stosie `docker-compose.backup-test.yml` (projekt `silo-bt`): seed, etykieta, archiwizacja, draft z załącznikiem, wiadomość zaplanowana, snooze, filtr → `backup.sh metadata` → usunięcie wolumenów Silo → `restore.sh metadata` → porównanie (README repozytorium, sekcja „Test backupu i odtwarzania”).
+`scripts/e2e-backup-restore.sh` runs the phase 5 definition of done on a separate stack `docker-compose.backup-test.yml` (project `silo-bt`): seed, a label, an archive, a draft with an attachment, a scheduled message, a snooze, a filter → `backup.sh metadata` → removal of the Silo volumes → `restore.sh metadata` → comparison (the repository README, section ["Backup and restore test"](../../README.md#backup-and-restore-test)).

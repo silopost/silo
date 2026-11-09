@@ -1,14 +1,14 @@
-## Co i dlaczego
+## What and why
 
-<!-- Krótki opis zmiany i motywacji. Tytuł PR w formacie Conventional Commits. -->
+<!-- A short description of the change and its motivation. PR title in Conventional Commits format. -->
 
-## Jak przetestowano
+## How it was tested
 
-<!-- Komendy, scenariusze, zrzuty ekranu. -->
+<!-- Commands, scenarios, screenshots. -->
 
 ## Checklist
 
-- [ ] Commity zgodne z Conventional Commits ([CONTRIBUTING.md](../CONTRIBUTING.md))
-- [ ] CI zielone
-- [ ] Dokumentacja zaktualizowana (README, docs/, plan)
-- [ ] Zmiana decyzji architektonicznej ma ADR w `docs/adr/`
+- [ ] Commits follow Conventional Commits ([CONTRIBUTING.md](../CONTRIBUTING.md))
+- [ ] CI is green
+- [ ] Documentation updated (README, docs/)
+- [ ] A change to an architectural decision has an ADR in `docs/adr/`

@@ -1,21 +1,21 @@
-# NNNN. Tytuł decyzji
+# NNNN. Decision title
 
-- **Status:** Zaproponowany | Przyjęty | Odrzucony | Zastąpiony przez NNNN
-- **Data:** RRRR-MM-DD
-- **Dotyczy:** silo-server | silo-web | silo
+- **Status:** Proposed | Accepted | Rejected | Superseded by NNNN
+- **Date:** YYYY-MM-DD
+- **Applies to:** silo-server | silo-web | silo
 
-## Kontekst
+## Context
 
-Jaki problem rozwiązujemy, jakie ograniczenia i siły działają (zasady z [planu](../../ARCHITECTURE_AND_PLAN.md)).
+What problem we are solving, and which constraints and forces are at play.
 
-## Decyzja
+## Decision
 
-Co dokładnie wybieramy. Jedno–dwa konkretne zdania, potem niezbędne szczegóły.
+What exactly we choose. One or two concrete sentences, then the necessary details.
 
-## Konsekwencje
+## Consequences
 
-Co zyskujemy, co tracimy, jakie powstają zobowiązania i ryzyka.
+What we gain, what we lose, and which commitments and risks arise.
 
-## Alternatywy
+## Alternatives
 
-Rozważone opcje i powód odrzucenia każdej.
+The options considered and the reason each was rejected.

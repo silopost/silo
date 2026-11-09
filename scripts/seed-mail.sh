@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Wstrzykuje korpus seed/mail/*.eml do docker-mailserver z docker-compose.dev.yml.
+# Injects the seed/mail/*.eml corpus into the docker-mailserver of docker-compose.dev.yml.
 #
-# Tryby (manifest: seed/mail/manifest.yaml, pole `via`):
-#   (domyslnie)  SMTP: wiadomosci `via: smtp` trafiaja przez Postfix -> Dovecot LMTP do INBOX
-#                (swaks uruchamiany w kontenerze mailserver, port 25).
-#   --append     IMAP APPEND: wiadomosci `via: append` trafiaja do folderu z manifestu
-#                (Sent, INBOX) z flagami i INTERNALDATE.
-#   --all        oba tryby po kolei.
-# Opcje: --shuffle (losowa kolejnosc), --delay <s> (przerwa miedzy wiadomosciami, np. 1 lub 0.5),
-#        --to <adres> (adresat/wlasciciel skrzynki, domyslnie dev1@silo.test), -h/--help.
-# Srodowisko: SILO_COMPOSE_FILE (domyslnie docker-compose.dev.yml; np. docker-compose.backup-test.yml).
-# Uwaga: skrypt nie sprawdza duplikatow - kolejne uruchomienie dodaje wiadomosci ponownie
-#        (czysty start: docker compose -f docker-compose.dev.yml down -v).
+# Modes (manifest: seed/mail/manifest.yaml, field `via`):
+#   (default)    SMTP: `via: smtp` messages go through Postfix -> Dovecot LMTP into INBOX
+#                (swaks run in the mailserver container, port 25).
+#   --append     IMAP APPEND: `via: append` messages go into the folder from the manifest
+#                (Sent, INBOX) with flags and INTERNALDATE.
+#   --all        both modes in turn.
+# Options: --shuffle (random order), --delay <s> (pause between messages, e.g. 1 or 0.5),
+#          --to <address> (recipient/mailbox owner, default dev1@silo.test), -h/--help.
+# Environment: SILO_COMPOSE_FILE (default docker-compose.dev.yml; e.g. docker-compose.backup-test.yml).
+# Note: the script does not check for duplicates - another run adds the messages again
+#       (clean start: docker compose -f docker-compose.dev.yml down -v).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-export MSYS_NO_PATHCONV=1 # Git Bash na Windows nie moze "poprawiac" argumentow dla docker exec
+export MSYS_NO_PATHCONV=1 # Git Bash on Windows must not "fix" arguments for docker exec
 
 COMPOSE=(docker compose -f "${SILO_COMPOSE_FILE:-docker-compose.dev.yml}")
 MANIFEST=seed/mail/manifest.yaml
@@ -49,7 +49,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# Haslo skrzynki: devN@silo.test -> devpassN, inaczej z SILO_SEED_PASSWORD (tylko tryb append).
+# Mailbox password: devN@silo.test -> devpassN, otherwise from SILO_SEED_PASSWORD (append mode only).
 password_for() {
   if [[ "$1" =~ ^dev([0-9]+)@silo\.test$ ]]; then
     echo "devpass${BASH_REMATCH[1]}"
@@ -58,7 +58,7 @@ password_for() {
   fi
 }
 
-# Manifest -> linie: plik|folder|via|flagi|data
+# Manifest -> lines: file|folder|via|flags|date
 read_manifest() {
   tr -d '\r' < "$MANIFEST" | awk '
     function out() { if (f != "") print f "|" fo "|" v "|" fl "|" d }
@@ -70,9 +70,9 @@ read_manifest() {
     END { out() }'
 }
 
-# IMAP APPEND przez perl w kontenerze (curl -T nie ustawia flag ani INTERNALDATE).
-# argumenty: uzytkownik haslo folder flagi data; tresc wiadomosci na stdin.
-# shellcheck disable=SC2016 # kod perla, nie ma byc rozwijany przez shell
+# IMAP APPEND through perl in the container (curl -T sets neither flags nor INTERNALDATE).
+# arguments: user password folder flags date; the message content on stdin.
+# shellcheck disable=SC2016 # perl code, not to be expanded by the shell
 PERL_APPEND='
 use strict; use IO::Socket::INET;
 my ($u, $p, $box, $flags, $date) = @ARGV;
@@ -91,9 +91,9 @@ print $s $msg . "\r\n"; $r = until_tag("a2"); die "APPEND: $r" unless $r =~ /a2 
 print $s "a3 LOGOUT\r\n"; close $s;
 '
 
-# Petla dostarczania wykonywana w kontenerze (jeden docker exec zamiast jednego na wiadomosc:
-# na Windows pojedynczy exec trwa ~2 s). Lista wiadomosci przychodzi na stdin.
-# shellcheck disable=SC2016 # zmienne maja byc rozwijane dopiero w kontenerze
+# The delivery loop runs in the container (one docker exec instead of one per message:
+# on Windows a single exec takes ~2 s). The message list arrives on stdin.
+# shellcheck disable=SC2016 # the variables are to be expanded only in the container
 REMOTE_LOOP='ok=0; fail=0; i=0
 while IFS="|" read -r file folder via flags date from; do
   i=$((i + 1))
@@ -138,7 +138,7 @@ if [ "$SHUFFLE" = 1 ] && [ "$total" -gt 1 ]; then
   list=("${shuffled[@]}")
 fi
 
-# Korpus kopiujemy do kontenera raz.
+# The corpus is copied into the container once.
 "${COMPOSE[@]}" exec -T mailserver rm -rf "$REMOTE_DIR"
 "${COMPOSE[@]}" cp seed/mail "mailserver:$REMOTE_DIR"
 

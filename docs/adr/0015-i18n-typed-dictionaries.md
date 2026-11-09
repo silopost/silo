@@ -1,38 +1,38 @@
-# 0015. Wielojęzyczny UI: angielski jako język źródłowy, typowane słowniki, `settings.language`
+# 0015. Multilingual UI: English as the source language, typed dictionaries, `settings.language`
 
-- **Status:** Przyjęty
-- **Data:** 2026-11-08
-- **Dotyczy:** silo-server, silo-web, silo (dotyczy też przyszłego silo-mobile)
+- **Status:** Accepted
+- **Date:** 2026-11-08
+- **Applies to:** silo-server, silo-web, silo (also applies to the future silo-mobile)
 
-## Kontekst
+## Context
 
-`silo-web` miał jeden słownik `src/lib/i18n.ts` – typowany obiekt `t` z napisami i funkcjami (liczba mnoga przez własne `plural()` dla polskiego), wyłącznie po polsku, importowany w ~70 plikach; daty i liczby formatowane na sztywno w `pl-PL`, kilka napisów poza słownikiem (nazwy widoków systemowych, opisy skrótów, `index.html`, manifest PWA). Silo ma być wielojęzyczne: **domyślnie angielski**, inne języki wybierane w ustawieniach użytkownika, na start angielski i polski z kompletnym tłumaczeniem.
+`silo-web` had a single dictionary `src/lib/i18n.ts` – a typed object `t` with strings and functions (plurals through a custom `plural()` for Polish), Polish only, imported in ~70 files; dates and numbers were hard-coded to `pl-PL`, and a few strings lived outside the dictionary (names of system views, shortcut descriptions, `index.html`, the PWA manifest). Silo is to be multilingual: **English by default**, other languages selectable in the user's settings, starting with English and Polish with a complete translation.
 
-Ograniczenia z [planu](../../ARCHITECTURE_AND_PLAN.md): logika domenowa i stan użytkownika po stronie serwera, wspólne dla klientów (2.6); kontrakt OpenAPI przed UI ([ADR 0004](0004-huma-openapi-contract.md)); klient web ma działać bez przeładowania strony; `silo-mobile` ([ADR 0010](0010-react-native-for-silo-mobile.md)) ma własny `src/lib/i18n.ts` i powinien pokazać ten sam język co web.
+Constraints: domain logic and user state live on the server and are shared by the clients; the OpenAPI contract comes before the UI ([ADR 0004](0004-huma-openapi-contract.md)); the web client must work without a page reload; `silo-mobile` ([ADR 0010](0010-react-native-for-silo-mobile.md)) has its own `src/lib/i18n.ts` and should show the same language as the web client.
 
-## Decyzja
+## Decision
 
-**Język jest ustawieniem użytkownika na serwerze, słowniki są w klientach.**
+**The language is a user setting on the server; the dictionaries live in the clients.**
 
-- **`silo-server`:** pole `language` w `Settings` (wymagane w odpowiedzi) i `SettingsPatch`, w JSONB `users.settings` bez migracji. Wartość to kod BCP 47 z zamkniętej listy obsługiwanych języków (`en`, `pl`; enum w OpenAPI); brak lub nieobsługiwana wartość w bazie czyta się jako `en`; nieznany kod w `PATCH /settings` → `422 invalid_setting`. Zmiana idzie zwykłą ścieżką `settings.updated`, więc inne sesje (web, mobile) przełączają się same. Serwer **nie tłumaczy** komunikatów: problem details zostają po angielsku, klient pokazuje własny tekst dla `code` (detail serwera tylko jako szczegół diagnostyczny, np. odpowiedź SMTP/IMAP).
-- **`silo-web`, słowniki:** `src/lib/messages/en.ts` jest źródłem (`export type Messages = typeof en`), `messages/pl.ts` ma typ `Messages` – brak lub nadmiarowy klucz to błąd `tsc`; test porównuje drzewa kluczy także w mapach `Record<string, string>`, których typ nie sprawdza. Oba słowniki są bundlowane statycznie (dwa języki, kilkadziesiąt KB). Napisy z parametrami są funkcjami, liczba mnoga przez `Intl.PluralRules` (`lib/plural.ts`: `plural(locale, n, {one, few, many, other})`), wzorce dat date-fns są w słowniku (`dateFormats`), liczby i rozmiary przez `toLocaleString` bieżącego języka, porównania i `toLocaleLowerCase` z tym samym locale.
-- **`silo-web`, runtime (`src/lib/i18n.ts`):** bieżący język w module (`getLocale`/`setLocale`, `useLocale()` przez `useSyncExternalStore`, `useT()`, `getT()` dla kodu poza Reactem). Istniejący import `t` zostaje: to `Proxy`, który każdy odczyt kieruje do słownika bieżącego języka, więc toasty, powiadomienia desktop i `format.ts` zawsze mówią aktualnym językiem bez zmian w ~70 plikach. Zasada: `t.*` czytamy w funkcjach, nigdy w stałych modułu (stałe z napisami są funkcjami albo getterami). Zmiana języka przemontowuje `RouterProvider` pod kluczem języka – wszystkie trasy renderują się od nowa bez przeładowania strony; cache TanStack Query i store'y zustand zostają.
-- **Źródło języka w web:** przed zalogowaniem (ekran logowania, błędy sieci) ostatni język tej przeglądarki z `localStorage` (`silo.language`), a bez niego `en` – nie `navigator.language`, żeby nowy użytkownik zawsze widział domyślny angielski. Po zalogowaniu wygrywa `settings.language` (sesja, `GET /settings`, `settings.updated`, snapshot offline) i jest zapisywany w `localStorage`. Wybór w Ustawienia → Ogólne przełącza od razu (optymistycznie) i wysyła `PATCH {language}`; odrzucony PATCH przywraca poprzedni język. `document.documentElement.lang` i `document.title` idą za językiem.
-- **Statyczne zasoby:** `index.html` (`lang="en"`) i manifest PWA są jednym plikiem dla wszystkich użytkowników, więc są po angielsku; service worker nie pokazuje tekstów.
-- **`silo-mobile`:** czyta i zapisuje to samo `settings.language` (bez osobnej preferencji urządzenia), z tym samym domyślnym `en` i tą samą listą kodów; jego słowniki zostają w jego repo, z własnym typowaniem.
+- **`silo-server`:** a `language` field in `Settings` (required in the response) and `SettingsPatch`, in the `users.settings` JSONB, without a migration. The value is a BCP 47 code from a closed list of supported languages (`en`, `pl`; an enum in OpenAPI); a missing or unsupported value in the database reads as `en`; an unknown code in `PATCH /settings` → `422 invalid_setting`. The change goes through the regular `settings.updated` path, so other sessions (web, mobile) switch on their own. The server **does not translate** messages: problem details stay in English, and the client shows its own text for the `code` (the server's detail only as a diagnostic detail, e.g. an SMTP/IMAP response).
+- **`silo-web`, dictionaries:** `src/lib/messages/en.ts` is the source (`export type Messages = typeof en`), `messages/pl.ts` has the type `Messages` – a missing or extra key is a `tsc` error; a test compares the key trees, also in `Record<string, string>` maps that the type does not check. Both dictionaries are bundled statically (two languages, a few dozen KB). Strings with parameters are functions, plurals go through `Intl.PluralRules` (`lib/plural.ts`: `plural(locale, n, {one, few, many, other})`), date-fns date patterns are in the dictionary (`dateFormats`), numbers and sizes go through `toLocaleString` of the current language, and comparisons and `toLocaleLowerCase` use the same locale.
+- **`silo-web`, runtime (`src/lib/i18n.ts`):** the current language lives in the module (`getLocale`/`setLocale`, `useLocale()` through `useSyncExternalStore`, `useT()`, `getT()` for code outside React). The existing `t` import stays: it is a `Proxy` that routes every read to the dictionary of the current language, so toasts, desktop notifications and `format.ts` always speak the current language without changes in ~70 files. Rule: `t.*` is read inside functions, never in module constants (constants with strings are functions or getters). A language change remounts `RouterProvider` under a language key – all routes render again without a page reload; the TanStack Query cache and the zustand stores remain.
+- **Source of the language in the web client:** before sign-in (the sign-in screen, network errors) the last language of this browser from `localStorage` (`silo.language`), and without it `en` – not `navigator.language`, so that a new user always sees the default English. After sign-in `settings.language` wins (session, `GET /settings`, `settings.updated`, offline snapshot) and is saved to `localStorage`. Choosing it in Settings → General switches immediately (optimistically) and sends `PATCH {language}`; a rejected PATCH restores the previous language. `document.documentElement.lang` and `document.title` follow the language.
+- **Static assets:** `index.html` (`lang="en"`) and the PWA manifest are a single file for all users, so they are in English; the service worker shows no text.
+- **`silo-mobile`:** reads and writes the same `settings.language` (no separate device preference), with the same default `en` and the same list of codes; its dictionaries stay in its repository, with their own typing.
 
-## Konsekwencje
+## Consequences
 
-- Jeden język użytkownika na wszystkich urządzeniach; nowy język = słownik w każdym kliencie + kod w enumie serwera (zmiana addytywna kontraktu, starsze klienty ignorują nieznane wartości dzięki fallbackowi do `en`).
-- Brak nowej zależności; kompilator pilnuje kompletności tłumaczeń, a słowniki można przeglądać jak zwykły kod.
-- Przemontowanie przy zmianie języka gubi stan lokalny komponentów (np. niezapisany podpis w edytorze, przewinięcie listy); drafty są bezpieczne (autosave serwera, stan okien w zustand). Zmiana języka jest rzadka, więc to akceptujemy.
-- `Proxy` wymaga dyscypliny: napis odczytany w stałej modułu zamrozi się w języku z chwili importu – takie miejsca przerobiono na funkcje/gettery i opisano zasadę w `i18n.ts`.
-- Tłumaczy się przez edycję plików TypeScript (bez platformy tłumaczeń, bez ICU MessageFormat); przy wielu językach może to wymagać ekstrakcji do JSON.
+- One user language on all devices; a new language = a dictionary in every client + a code in the server's enum (an additive contract change; older clients ignore unknown values thanks to the fallback to `en`).
+- No new dependency; the compiler enforces complete translations, and the dictionaries can be reviewed like regular code.
+- Remounting on a language change loses local component state (e.g. an unsaved signature in the editor, the list scroll position); drafts are safe (server autosave, window state in zustand). Language changes are rare, so we accept this.
+- The `Proxy` requires discipline: a string read in a module constant freezes in the language at import time – such places were turned into functions/getters, and the rule is documented in `i18n.ts`.
+- Translation is done by editing TypeScript files (no translation platform, no ICU MessageFormat); with many languages this may require extraction to JSON.
 
-## Alternatywy
+## Alternatives
 
-- **i18next / react-i18next (lub FormatJS):** dojrzałe, z ICU, ładowaniem leniwym i narzędziami dla tłumaczy, ale klucze jako napisy (typowanie przez generowane deklaracje), druga warstwa formatowania obok date-fns i przepisanie ~1000 wywołań `t.xxx`. Dla dwóch statycznych języków przewaga nie uzasadnia zależności; do rozważenia przy wielu językach i zewnętrznych tłumaczach.
-- **Język tylko w `localStorage` klienta:** prostsze, ale każde urządzenie i klient (mobile) wybierałby osobno, wbrew zasadzie wspólnego stanu użytkownika na serwerze.
-- **`Accept-Language` / `navigator.language`:** dobre jako podpowiedź, ale nie jako ustawienie – wymaganie to domyślny angielski i świadomy wybór w ustawieniach.
-- **Tłumaczenie problem details na serwerze:** rozszerzyłoby kontrakt o negocjację języka; klienci i tak mapują stabilne `code` na własne teksty.
-- **`useT()` w każdym komponencie zamiast `Proxy` + remount:** re-render bez remountu, ale zmiana ~70 plików i ryzyko pominięcia kodu poza Reactem (toasty, powiadomienia), który i tak potrzebuje `getT()`.
+- **i18next / react-i18next (or FormatJS):** mature, with ICU, lazy loading and tools for translators, but keys as strings (typing through generated declarations), a second formatting layer next to date-fns and a rewrite of ~1000 `t.xxx` calls. For two static languages the advantage does not justify the dependency; to be reconsidered with many languages and external translators.
+- **The language only in the client's `localStorage`:** simpler, but every device and client (mobile) would choose separately, contrary to the principle of shared user state on the server.
+- **`Accept-Language` / `navigator.language`:** good as a hint, but not as a setting – the requirement is English by default and a deliberate choice in the settings.
+- **Translating problem details on the server:** would extend the contract with language negotiation; clients map the stable `code` to their own texts anyway.
+- **`useT()` in every component instead of `Proxy` + remount:** re-renders without a remount, but a change in ~70 files and a risk of missing code outside React (toasts, notifications), which needs `getT()` anyway.

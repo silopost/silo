@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# Backup instancji Silo uruchomionej przez docker compose (plan 2.1, 3.16, 4.1).
+# Backup of a Silo instance run with docker compose.
 #
-# Uzycie: scripts/backup.sh [metadata|full] [--out DIR] [--user EMAIL] [-h|--help]
-#   metadata (domyslnie)  `silo-server export-metadata`: JSON z metadanymi, ktorych nie ma na
-#                         serwerze IMAP (uzytkownicy, konta, etykiety i ich przypisania, snooze,
-#                         filtry, kontakty, drafty i wiadomosci zaplanowane z zalacznikami).
-#                         Cache poczty odtworzy synchronizacja. Plik: DIR/silo-metadata-<ts>.json.
-#   full                  pg_dump -Fc calej bazy (DIR/silo-db-<ts>.dump) + tar.gz katalogu blobow
-#                         (DIR/silo-blobs-<ts>.tar.gz; mirror to cache, ale pelny backup go
-#                         zachowuje i oszczedza resync). Przy SILO_BLOB_BACKEND=s3 bucket
-#                         archiwizuje sie osobno.
-# Opcje: --out DIR (domyslnie backups/), --user EMAIL (tylko metadata: jeden uzytkownik).
-# Srodowisko: SILO_COMPOSE_FILE (domyslnie docker-compose.yml), COMPOSE_PROJECT_NAME (jak w compose),
-#   SILO_BACKUP_WAIT (s, domyslnie 60: czekanie na pusta kolejke imap_op przed eksportem),
-#   SILO_TAR_IMAGE (domyslnie alpine:3.22, obraz do archiwizacji wolumenu blobow).
-# Do kazdego pliku powstaje plik .sha256. SILO_SECRET_KEY NIE jest w backupie: przechowuj go
-# osobno; odtworzenie wymaga tego samego klucza.
+# Usage: scripts/backup.sh [metadata|full] [--out DIR] [--user EMAIL] [-h|--help]
+#   metadata (default)    `silo-server export-metadata`: JSON with the metadata that is not on
+#                         the IMAP server (users, accounts, labels and their assignments, snoozes,
+#                         filters, contacts, drafts and scheduled messages with attachments).
+#                         Synchronization restores the mail cache. File: DIR/silo-metadata-<ts>.json.
+#   full                  pg_dump -Fc of the whole database (DIR/silo-db-<ts>.dump) + tar.gz of the
+#                         blob directory (DIR/silo-blobs-<ts>.tar.gz; the mirror is a cache, but a
+#                         full backup keeps it and saves a resync). With SILO_BLOB_BACKEND=s3 the
+#                         bucket is archived separately.
+# Options: --out DIR (default backups/), --user EMAIL (metadata only: a single user).
+# Environment: SILO_COMPOSE_FILE (default docker-compose.yml), COMPOSE_PROJECT_NAME (as in compose),
+#   SILO_BACKUP_WAIT (s, default 60: waiting for an empty imap_op queue before the export),
+#   SILO_TAR_IMAGE (default alpine:3.22, the image used to archive the blob volume).
+# Every file gets a .sha256 file. SILO_SECRET_KEY is NOT in the backup: keep it
+# separately; a restore requires the same key.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-export MSYS_NO_PATHCONV=1 # Git Bash na Windows nie moze "poprawiac" sciezek w argumentach docker
+export MSYS_NO_PATHCONV=1 # Git Bash on Windows must not "fix" paths in docker arguments
 
 COMPOSE=(docker compose -f "${SILO_COMPOSE_FILE:-docker-compose.yml}")
 MODE=metadata
@@ -52,9 +52,9 @@ while [ $# -gt 0 ]; do
 done
 [ "$MODE" = metadata ] || [ -z "$USER_EMAIL" ] || die "--user dziala tylko w trybie metadata"
 
-# psql w kontenerze postgres (uzytkownik i baza z jego srodowiska).
+# psql in the postgres container (user and database from its environment).
 psql_q() {
-  # shellcheck disable=SC2016 # zmienne rozwija powloka kontenera postgres
+  # shellcheck disable=SC2016 # the postgres container's shell expands the variables
   "${COMPOSE[@]}" exec -T postgres sh -c 'psql -X -q -tA -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "$1"' sh "$1"
 }
 
@@ -71,7 +71,7 @@ checksum() {
   fi
 }
 
-# Wolumen z katalogiem blobow: z montowan kontenera silo-server, inaczej po etykietach compose.
+# The volume with the blob directory: from the silo-server container's mounts, otherwise by compose labels.
 blobs_volume() {
   local cid vol="" project
   if [ -n "${SILO_BLOBS_VOLUME:-}" ]; then echo "$SILO_BLOBS_VOLUME"; return; fi
@@ -92,7 +92,7 @@ TS="$(date -u +%Y%m%dT%H%M%SZ)"
 
 if [ "$MODE" = metadata ]; then
   [ -n "$("${COMPOSE[@]}" ps --status running -q silo-server)" ] || die "silo-server nie dziala (${COMPOSE[*]} up -d)"
-  # Oczekujace operacje write-back (imap_op, np. archiwizacja w oknie undo) nie trafiaja do backupu.
+  # Pending write-back operations (imap_op, e.g. an archive within the undo window) do not go into the backup.
   q="SELECT count(*) FROM jobs WHERE kind = 'imap_op' AND status IN ('pending', 'running')"
   waited=0
   while :; do
@@ -110,7 +110,7 @@ if [ "$MODE" = metadata ]; then
   file="$OUT_DIR/silo-metadata-$TS.json"
   args=(export-metadata --out -)
   [ -n "$USER_EMAIL" ] && args+=(--user "$USER_EMAIL")
-  # Obraz prod jest distroless (bez powloki): exec bezposrednio na binarce.
+  # The prod image is distroless (no shell): exec the binary directly.
   if ! "${COMPOSE[@]}" exec -T silo-server /silo-server "${args[@]}" > "$file.part"; then
     rm -f "$file.part"
     die "export-metadata nie powiodl sie"
@@ -120,7 +120,7 @@ if [ "$MODE" = metadata ]; then
   echo "metadata: $file ($(size_of "$file") B)"
 else
   db="$OUT_DIR/silo-db-$TS.dump"
-  # shellcheck disable=SC2016 # zmienne rozwija powloka kontenera postgres
+  # shellcheck disable=SC2016 # the postgres container's shell expands the variables
   if ! "${COMPOSE[@]}" exec -T postgres sh -c 'pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$db.part"; then
     rm -f "$db.part"
     die "pg_dump nie powiodl sie"

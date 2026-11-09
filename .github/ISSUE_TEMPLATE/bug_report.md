@@ -1,25 +1,25 @@
 ---
-name: Zgłoszenie błędu
-about: Coś nie działa zgodnie z oczekiwaniem
+name: Bug report
+about: Something does not work as expected
 title: "fix: "
 labels: bug
 ---
 
-## Opis
+## Description
 
-<!-- Co się dzieje, a co powinno? -->
+<!-- What happens, and what should happen instead? -->
 
-## Kroki do odtworzenia
+## Steps to reproduce
 
 1.
 2.
 
-## Środowisko
+## Environment
 
-- Wersje: silo / silo-server / silo-web:
-- Serwer pocztowy (np. Dovecot 2.3, Gmail IMAP):
-- Przeglądarka i system:
+- Versions: silo / silo-server / silo-web:
+- Mail server (e.g. Dovecot 2.3, Gmail IMAP):
+- Browser and operating system:
 
-## Logi
+## Logs
 
-<!-- Bez haseł i danych osobowych. -->
+<!-- No passwords or personal data. -->

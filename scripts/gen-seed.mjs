@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Generuje korpus seed/mail/*.eml (CRLF) oraz seed/mail/manifest.yaml.
-// Uzycie: node scripts/gen-seed.mjs   (wynik jest commitowany; generator zostaje dla powtarzalnosci)
-// Dane fikcyjne: domeny silo.test i example.com. Daty: listopad 2026.
+// Generates the seed/mail/*.eml corpus (CRLF) and seed/mail/manifest.yaml.
+// Usage: node scripts/gen-seed.mjs   (the output is committed; the generator stays for reproducibility)
+// Fictional data: domains silo.test and example.com. Dates: November 2026.
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +10,7 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "seed", "mail");
 mkdirSync(OUT, { recursive: true });
 for (const f of readdirSync(OUT)) if (f.endsWith(".eml") || f === "manifest.yaml") rmSync(join(OUT, f));
 
-// --- kodowania jednobajtowe (tylko polskie litery; reszta ASCII) ---
+// --- single-byte encodings (Polish letters only; the rest is ASCII) ---
 const TABLES = {
   "iso-8859-2": { ą: 0xb1, ć: 0xe6, ę: 0xea, ł: 0xb3, ń: 0xf1, ó: 0xf3, ś: 0xb6, ź: 0xbc, ż: 0xbf, Ą: 0xa1, Ć: 0xc6, Ę: 0xca, Ł: 0xa3, Ń: 0xd1, Ó: 0xd3, Ś: 0xa6, Ź: 0xac, Ż: 0xaf },
   "windows-1250": { ą: 0xb9, ć: 0xe6, ę: 0xea, ł: 0xb3, ń: 0xf1, ó: 0xf3, ś: 0x9c, ź: 0x9f, ż: 0xbf, Ą: 0xa5, Ć: 0xc6, Ę: 0xca, Ł: 0xa3, Ń: 0xd1, Ó: 0xd3, Ś: 0x8c, Ź: 0x8f, Ż: 0xaf },
@@ -54,7 +54,7 @@ function qp(buf) {
   return out + line;
 }
 const isAscii = (s) => /^[\x20-\x7e]*$/.test(s);
-// Encoded-word (B); dlugie wartosci dzielone na slowa rozdzielone spacja (zlozenie linii robi fold()).
+// Encoded-word (B); long values split into space-separated words (fold() does the line folding).
 function encWord(str, charset = "utf-8") {
   if (isAscii(str)) return str;
   const cs = Array.from(str);
@@ -78,7 +78,7 @@ function fold(name, value) {
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function dates(local) {
-  // "2026-11-02 09:15" w CET (+0100)
+  // "2026-11-02 09:15" in CET (+0100)
   const [d, t] = local.split(" ");
   const [y, mo, da] = d.split("-").map(Number);
   const [h, mi] = t.split(":").map(Number);
@@ -90,7 +90,7 @@ function dates(local) {
   };
 }
 
-// --- ludzie ---
+// --- people ---
 const P = {
   anna: ["Anna Kowalska", "anna.kowalska@example.com"],
   piotr: ["Piotr Nowak", "piotr.nowak@example.com"],
@@ -107,14 +107,14 @@ const P = {
 };
 const addr = (k, cs = "utf-8") => `${encWord(P[k][0], cs)} <${P[k][1]}>`;
 
-// --- definicje wiadomosci (kolejnosc = numeracja plikow = kolejnosc dostarczania) ---
+// --- message definitions (order = file numbering = delivery order) ---
 const M = [];
 const msg = (o) => {
   M.push({ folder: "INBOX", via: "smtp", cs: "utf-8", cte: "qp", flags: "", ...o });
 };
 const L = (...l) => l.join("\n");
 
-// T1: plan sprintu (INBOX + Sent)
+// T1: sprint plan (INBOX + Sent)
 msg({ key: "t1a", from: "anna", to: ["dev1"], subj: "Plan sprintu 47", date: "2026-11-02 09:15",
   body: L("Cześć,", "", "proponuję taki zakres sprintu 47:", "- migracje bazy danych,", "- synchronizacja skrzynek,", "- widok wątków.", "", "Daj znać, co o tym myślisz.", "Anna") });
 msg({ key: "t1s1", folder: "Sent", via: "append", flags: "\\Seen", from: "dev1", to: ["anna"], subj: "Re: Plan sprintu 47", date: "2026-11-02 09:50", reply: "t1a",
@@ -128,7 +128,7 @@ msg({ key: "t1c", from: "anna", to: ["dev1", "piotr"], subj: "Re: Plan sprintu 4
 msg({ key: "t1n", via: "append", flags: "\\Flagged Praca", from: "anna", to: ["dev1"], subj: "Re: Plan sprintu 47", date: "2026-11-03 09:05", reply: "t1c", noMid: true,
   body: L("PS. Wiadomość bez Message-ID (dodana przez APPEND), ale z In-Reply-To.", "", "Anna") });
 
-// T2: oferta, zmiana tematu w watku, zalacznik
+// T2: offer, subject change within the thread, attachment
 msg({ key: "t2a", from: "marta", to: ["dev1"], subj: "Zapytanie o ofertę serwerów", date: "2026-11-02 12:00", cte: "base64",
   body: L("Dzień dobry,", "", "prosimy o wycenę 3 serwerów do obsługi poczty (16 GB RAM, 2 TB SSD).", "", "Pozdrawiam,", "Marta Wiśniewska") });
 msg({ key: "t2s", folder: "Sent", via: "append", flags: "\\Seen", from: "dev1", to: ["marta"], subj: "Re: Zapytanie o ofertę serwerów", date: "2026-11-02 14:10", reply: "t2a",
@@ -139,7 +139,7 @@ msg({ key: "t2b", from: "marta", to: ["dev1"], subj: "Oferta serwerów – wersj
 msg({ key: "t2c", from: "marta", to: ["dev1"], subj: "Re: Oferta serwerów – wersja 2 (zmiana zakresu)", date: "2026-11-03 15:20", reply: "t2b",
   body: L("Czy możemy omówić ofertę jutro o 10:00?", "", "Marta") });
 
-// T3: out-of-order (odpowiedzi trafiaja przed rodzicem)
+// T3: out-of-order (replies arrive before the parent)
 msg({ key: "t3c", from: "jan", to: ["dev2"], cc: ["dev1"], subj: "Re: Release 2.3 checklist", date: "2026-11-03 09:45", reply: "t3b",
   body: L("Dzięki, punkt 4 dopiszę dziś.", "", "Jan") });
 msg({ key: "t3b", from: "dev2", to: ["jan"], cc: ["dev1"], subj: "Re: Release 2.3 checklist", date: "2026-11-03 09:20", reply: "t3a",
@@ -163,7 +163,7 @@ msg({ key: "t4b", from: "tomek", to: ["ewa"], cc: ["dev1"], subj: "Re: Spotkanie
 msg({ key: "t4s", folder: "Sent", via: "append", flags: "\\Seen", from: "dev1", to: ["ewa"], cc: ["tomek"], subj: "Re: Spotkanie w czwartek", date: "2026-11-03 14:00", reply: "t4b",
   body: L("Będę na miejscu.", "", "Dev One"), html: html("Re: Spotkanie w czwartek", ["Będę na miejscu.", "Dev One"]) });
 
-// T5: dluzszy watek z rozgalezieniem (References i tylko In-Reply-To)
+// T5: a longer thread with branching (References and In-Reply-To only)
 const t5 = "Awaria wdrożenia na stagingu";
 msg({ key: "t5a", from: "jan", to: ["dev1", "dev2", "dev3"], subj: t5, date: "2026-11-04 07:30",
   body: L("Wdrożenie na stagingu zakończyło się błędem migracji 000012.", "Ktoś patrzy?", "", "Jan") });
@@ -184,7 +184,7 @@ msg({ key: "t5f", from: "jan", to: ["dev1", "dev2"], subj: `Re: Re: ${t5}`, date
 msg({ key: "t5s3", folder: "Sent", via: "append", flags: "\\Seen", from: "dev1", to: ["jan"], cc: ["dev2", "dev3"], subj: `Re: ${t5}`, date: "2026-11-04 09:20", reply: "t5f",
   body: L("Dziękuję wszystkim, zamykam temat.", "", "Dev One") });
 
-// T6: ISO-8859-2 i Windows-1250
+// T6: ISO-8859-2 and Windows-1250
 msg({ key: "t6a", from: "ewa", to: ["dev1"], subj: "Zażółć gęślą jaźń – test kodowań".replace("–", "-"), date: "2026-11-02 16:00", cs: "iso-8859-2", cte: "qp",
   body: L("Pchnąć w tę łódź jeża lub ośm skrzyń fig.", "Wiadomość w ISO-8859-2, treść Quoted-Printable.", "", "Ewa") });
 msg({ key: "t6b", from: "tomek", to: ["ewa"], cc: ["dev1"], subj: "Re: Zażółć gęślą jaźń - test kodowań", date: "2026-11-02 16:20", cs: "iso-8859-2", cte: "base64", reply: "t6a",
@@ -196,18 +196,18 @@ msg({ key: "t6c", from: "jan", to: ["dev1"], subj: "Łódź - harmonogram dostaw
 msg({ key: "t6d", from: "marta", to: ["jan"], cc: ["dev1"], subj: "Re: Łódź - harmonogram dostaw", date: "2026-11-02 17:30", cs: "windows-1250", cte: "base64", reply: "t6c",
   body: L("Czy piątek można przesunąć na sobotę? Pozdrawiam, Marta Wiśniewska", "Windows-1250, Base64.") });
 
-// wiadomosc do siebie (kopia w INBOX i Sent, ten sam Message-ID)
+// a message to self (a copy in INBOX and Sent, the same Message-ID)
 msg({ key: "self", from: "dev1", to: ["dev1"], subj: "Notatka dla siebie: zadania na jutro", date: "2026-11-03 22:00",
   body: L("1. Przejrzeć PR-y", "2. Zaktualizować dokumentację", "3. Odpisać Marcie") });
 msg({ key: "selfs", folder: "Sent", via: "append", flags: "\\Seen", from: "dev1", to: ["dev1"], subj: "Notatka dla siebie: zadania na jutro", date: "2026-11-03 22:00", sameAs: "self",
   body: L("1. Przejrzeć PR-y", "2. Zaktualizować dokumentację", "3. Odpisać Marcie") });
 
-// maile od innych kont dev
+// mail from other dev accounts
 msg({ key: "lunch", from: "dev2", to: ["dev1"], subj: "Lunch?", date: "2026-11-04 11:30", cte: "7bit", body: L("Idziemy na lunch o 12:30?", "Dev Two") });
 msg({ key: "review", from: "dev3", to: ["dev1"], cc: ["dev2"], subj: "Prośba o review: PR #214", date: "2026-11-04 10:00",
   body: L("Mógłbyś rzucić okiem na PR #214 (obsługa QRESYNC)?", "", "Dev Three") });
 
-// newslettery (HTML + tekst, QP)
+// newsletters (HTML + text, QP)
 for (let i = 0; i < 6; i++) {
   const n = 38 + i;
   const day = 1 + Math.floor(i / 2);
@@ -217,26 +217,26 @@ for (let i = 0; i < 6; i++) {
     html: html(`Biuletyn #${n}`, [`Najnowsze wpisy: <a href="https://news.example.com/n/${n}">wydajność IMAP</a>, wątki, skróty klawiszowe.`, '<small>Wypisz się: <a href="https://news.example.com/unsubscribe">tutaj</a></small>']) });
 }
 
-// faktury z zalacznikami
+// invoices with attachments
 for (const [i, kind] of [[153, "pdf"], [154, "pdf"], [155, "csv"]]) {
   msg({ key: `inv${i}`, from: "shop", to: ["dev1"], subj: `Faktura FV/2026/11/0${i}`, date: `2026-11-0${i - 152} 08:00`,
     att: [{ name: kind === "pdf" ? `FV-2026-11-0${i}.pdf` : `zestawienie-0${i}.csv`, type: kind === "pdf" ? "application/pdf" : "text/csv", kind }],
     body: L("Dzień dobry,", "w załączniku faktura za zamówienie.", "", "Sklep Przykład") });
 }
 
-// inline obrazy
+// inline images
 for (const [k, subj, who, day] of [["img1", "Logo nowego produktu", "ewa", "2026-11-03 11:00"], ["img2", "Zdjęcie ze spotkania", "tomek", "2026-11-04 12:15"]]) {
   msg({ key: k, from: who, to: ["dev1"], subj, date: day, inline: true,
     body: L(`${subj} (obraz osadzony w HTML).`),
     html: `<html><body><p>${subj}:</p><p><img src="cid:${k}@silo.test" alt="obraz" width="1" height="1"></p></body></html>` });
 }
 
-// dodatkowe pojedyncze
+// additional single messages
 msg({ key: "urlop", from: "marta", to: ["dev1"], subj: "Przypomnienie: wniosek urlopowy", date: "2026-11-04 13:00", body: L("Przypominam o złożeniu wniosku urlopowego do piątku.") });
 msg({ key: "webinar", from: "news", to: ["dev1"], subj: "Zaproszenie na webinar: IMAP w praktyce", date: "2026-11-04 14:00",
   body: L("Zapraszamy na webinar 12.11.2026, 18:00.", "Rejestracja: https://news.example.com/webinar") });
 
-// powiadomienia CI (osobne wiadomosci, brak watkowania)
+// CI notifications (separate messages, no threading)
 for (let i = 0; i < 16; i++) {
   const build = 1201 + i;
   const ok = i % 4 !== 3;
@@ -246,13 +246,13 @@ for (let i = 0; i < 16; i++) {
     body: L(`Build #${build} on main: ${ok ? "passed" : "FAILED"}.`, `Duration: ${2 + (i % 5)}m ${10 + i}s`, `Details: https://ci.example.com/builds/${build}`) });
 }
 
-// dodatkowe wiadomosci wstrzykiwane APPEND do INBOX
+// additional messages injected with APPEND into INBOX
 msg({ key: "fwd", via: "append", flags: "\\Seen $Forwarded", from: "news", to: ["dev1"], subj: "Biuletyn Silo Test #37: archiwum", date: "2026-10-30 07:00",
   body: L("Archiwalne wydanie biuletynu #37 (dodane przez APPEND z flagą $Forwarded).") });
 msg({ key: "nomid", via: "append", noMid: true, flags: "\\Flagged", from: "tomek", to: ["dev1"], subj: "Zaproszenie bez identyfikatora", date: "2026-11-04 15:00",
   body: L("Ta wiadomość celowo nie ma nagłówka Message-ID.", "", "Tomasz") });
 
-// --- budowa MIME ---
+// --- MIME building ---
 const mid = (m) => `<seed-${m.sameAs ?? m.key}@${P[m.from][1].split("@")[1]}>`;
 const byKey = new Map();
 M.forEach((m, i) => {

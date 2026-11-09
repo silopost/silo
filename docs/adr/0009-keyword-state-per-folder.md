@@ -1,32 +1,32 @@
-# 0009. Stan keywordu etykiety per folder i limit liczony z `PERMANENTFLAGS`
+# 0009. Per-folder label keyword state and a limit counted from `PERMANENTFLAGS`
 
-- **Status:** Przyjęty
-- **Data:** 2026-11-06
-- **Dotyczy:** silo-server, silo-web
+- **Status:** Accepted
+- **Date:** 2026-11-06
+- **Applies to:** silo-server, silo-web
 
-## Kontekst
+## Context
 
-Etykiety użytkownika są zapisywane na serwerze jako IMAP keywords ([plan 3.7](../../ARCHITECTURE_AND_PLAN.md#37-etykiety-użytkownika-jako-imap-keywords)), żeby były widoczne w Thunderbirdzie i wracały po odbudowie cache. Plan zakładał dwa stany na poziomie konta (`accounts.keywords_supported`) i przy przekroczeniu limitu maildir (26 słów kluczowych na folder – litery `a`–`z` w nazwach plików) „serwer odrzuca nowe”. Test na Dovecocie 2.4.5 (maildir, Faza 4) pokazał, że **serwer nie odrzuca 27. keywordu**: `STORE` kończy się `OK`, keyword trafia tylko do indeksu Dovecota i ginie przy jego odbudowie. Etykieta wyglądałaby na zapisaną, a po awarii indeksu lub `rebuild-cache` znikałaby z wiadomości. Limit jest per folder, więc jedna etykieta może być keywordem w INBOX i nie móc nim być w Archive.
+User labels are stored on the server as IMAP keywords, so that they are visible in Thunderbird and come back after a cache rebuild. The design assumed two states at the account level (`accounts.keywords_supported`) and that when the maildir limit is exceeded (26 keywords per folder – the letters `a`–`z` in file names) "the server rejects new ones". A test on Dovecot 2.4.5 (maildir, phase 4) showed that **the server does not reject the 27th keyword**: `STORE` ends with `OK`, the keyword only lands in Dovecot's index and is lost when the index is rebuilt. The label would look saved, and after an index failure or a `rebuild-cache` it would disappear from the message. The limit is per folder, so one label may be a keyword in INBOX and be unable to be one in Archive.
 
-## Decyzja
+## Decision
 
-Silo **liczy limit samo** i przechowuje **stan keywordu etykiety per folder**.
+Silo **counts the limit itself** and stores the **label's keyword state per folder**.
 
-- **Limit:** przed zapisem nowego keywordu Silo liczy słowa kluczowe w `PERMANENTFLAGS` folderu (odświeżanym przy każdym `SELECT`) i porównuje z `SILO_SYNC_KEYWORD_FOLDER_LIMIT` (domyślnie 26; `0` = bez limitu, np. sdbox/mdbox). Ponad limit keyword nie jest zapisywany. `NO` na `STORE` w folderze, który ogłasza `\*`, ma ten sam skutek.
-- **Stan:** tabela `label_folder_state(label_id, folder_id)` (migracja `000009_label_folders_rebuild`) – foldery, w których etykieta żyje tylko w Silo. API: `GET /labels` → `keywordState` ∈ `mirrored | local_only | partial`, przy `partial` `localOnlyFolders: [f_…]`; dodanie folderu do listy → `label.changed`.
-- **Poziom konta bez zmian:** brak `\*` w `PERMANENTFLAGS` INBOX → `local_only` dla wszystkich etykiet i `account.error keywords_unsupported` (tylko w tym, globalnym przypadku).
-- **Kolizje:** nowy keyword nie zajmuje słowa, które serwer już zna z `PERMANENTFLAGS` folderu (tag innego klienta) – dostaje `_2`, `_3`, mapowanie jest jawne w `labels.imap_keyword`.
-- **Odbudowa cache:** przypisania etykiet w folderach `localOnlyFolders` (i etykiet `local_only`) są przenoszone przez `account_rebuilds.restore` po `dedupe_key`, bo nie da się ich odczytać z serwera.
+- **Limit:** before storing a new keyword, Silo counts the keywords in the folder's `PERMANENTFLAGS` (refreshed on every `SELECT`) and compares them with `SILO_SYNC_KEYWORD_FOLDER_LIMIT` (default 26; `0` = no limit, e.g. sdbox/mdbox). Beyond the limit the keyword is not stored. A `NO` to `STORE` in a folder that announces `\*` has the same effect.
+- **State:** the table `label_folder_state(label_id, folder_id)` (migration `000009_label_folders_rebuild`) – the folders in which the label lives only in Silo. API: `GET /labels` → `keywordState` ∈ `mirrored | local_only | partial`, with `partial` also `localOnlyFolders: [f_…]`; adding a folder to the list → `label.changed`.
+- **Account level unchanged:** no `\*` in INBOX's `PERMANENTFLAGS` → `local_only` for all labels and `account.error keywords_unsupported` (only in this global case).
+- **Collisions:** a new keyword does not take a word that the server already knows from the folder's `PERMANENTFLAGS` (a tag of another client) – it gets `_2`, `_3`, and the mapping is explicit in `labels.imap_keyword`.
+- **Cache rebuild:** label assignments in `localOnlyFolders` folders (and of `local_only` labels) are carried over by `account_rebuilds.restore` by `dedupe_key`, because they cannot be read from the server.
 
-## Konsekwencje
+## Consequences
 
-- Etykieta nigdy nie „udaje” zapisu na serwerze: to, co jest keywordem, przetrwa odbudowę indeksu Dovecota i `rebuild-cache`; reszta jest jawnie oznaczona w UI (ostrzeżenie przy etykiecie, `silo-web` pokazuje foldery).
-- Liczenie z `PERMANENTFLAGS` zależy od tego, że serwer ogłasza w nim wszystkie słowa kluczowe folderu (Dovecot: tak). Dovecot nie usuwa słowa z listy po zniknięciu wiadomości, więc folder testowy z wieloma przebiegami e2e może dojść do limitu (porada w `docs/admin`).
-- Etykiety `partial` wymagają backupu metadanych Silo tak jak `local_only` (plan 3.3).
-- Nowy env `SILO_SYNC_KEYWORD_FOLDER_LIMIT` (plan 2.5) – administrator serwera bez limitu ustawia `0`.
+- A label never "pretends" to be saved on the server: what is a keyword survives a rebuild of Dovecot's index and `rebuild-cache`; the rest is explicitly marked in the UI (a warning on the label, `silo-web` shows the folders).
+- Counting from `PERMANENTFLAGS` depends on the server announcing all keywords of the folder in it (Dovecot: yes). Dovecot does not remove a word from the list after its messages are gone, so a test folder with many e2e runs can reach the limit (advice in `docs/admin`).
+- `partial` labels require a backup of Silo metadata, just like `local_only` ones, because they exist only in Silo's database.
+- A new env variable `SILO_SYNC_KEYWORD_FOLDER_LIMIT` – an administrator of a server without the limit sets `0`.
 
-## Alternatywy
+## Alternatives
 
-- **Poleganie na odmowie serwera (plan pierwotny):** Dovecot 2.4 maildir nie odmawia – ciche utraty etykiet. Odrzucone.
-- **Stan tylko na poziomie konta (`keywords_supported=false` po pierwszym przekroczeniu):** jeden pełny folder wyłączałby keywords wszędzie, także tam, gdzie działają. Odrzucone.
-- **Prefiks lub kodowanie wielu etykiet w jednym keywordzie:** obchodzi limit, ale tagi przestają być czytelne w Thunderbirdzie (sprzeczne z celem 3.7). Odrzucone.
+- **Relying on the server's refusal (the original design):** Dovecot 2.4 maildir does not refuse – silent label loss. Rejected.
+- **State only at the account level (`keywords_supported=false` after the first overflow):** one full folder would disable keywords everywhere, including where they work. Rejected.
+- **A prefix or encoding several labels in one keyword:** works around the limit, but tags stop being readable in Thunderbird (contrary to the goal of showing labels as tags). Rejected.

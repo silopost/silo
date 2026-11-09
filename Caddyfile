@@ -1,8 +1,8 @@
-# Caddy dla docker-compose.yml (plan 2.1): TLS (ACME, dla localhost certyfikat wewnetrzny),
-# /api -> silo-server, reszta -> silo-web (SPA). Naglowki bezpieczenstwa API ustawia silo-server
-# (README silo-server, "Hardening"); tutaj tylko dla SPA.
+# Caddy for docker-compose.yml: TLS (ACME; an internal certificate for localhost),
+# /api -> silo-server, everything else -> silo-web (SPA). silo-server sets the API security headers
+# (silo-server README, "Hardening"); here only for the SPA.
 {$SILO_DOMAIN} {
-	# SSE: bez kompresji i buforowania (zdarzenia maja dochodzic od razu).
+	# SSE: no compression or buffering (events must arrive immediately).
 	handle /api/v1/events {
 		reverse_proxy silo-server:8080 {
 			flush_interval -1
@@ -21,9 +21,9 @@
 	handle {
 		encode zstd gzip
 		header {
-			# HTML wiadomosci jest w iframe sandbox (srcdoc), ktory dziedziczy te polityke:
-			# img-src https:/http: pozwala na obrazy zdalne po kliknieciu "Pokaz obrazy"
-			# (domyslnie blokuje je CSP samej ramki), data:/blob: - podglady i kod QR TOTP.
+			# Message HTML is in a sandboxed iframe (srcdoc), which inherits this policy:
+			# img-src https:/http: allows remote images after clicking "Show images"
+			# (blocked by default by the frame's own CSP), data:/blob: - previews and the TOTP QR code.
 			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 			Strict-Transport-Security "max-age=31536000; includeSubDomains"
 			X-Content-Type-Options "nosniff"

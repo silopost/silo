@@ -1,18 +1,18 @@
 ---
-name: Propozycja funkcji
-about: Pomysł na nową funkcję lub usprawnienie
+name: Feature request
+about: An idea for a new feature or an improvement
 title: "feat: "
 labels: enhancement
 ---
 
 ## Problem
 
-<!-- Jaką potrzebę realizuje propozycja? -->
+<!-- What need does the proposal address? -->
 
-## Proponowane rozwiązanie
+## Proposed solution
 
-<!-- Jak ma to działać? Jak robi to Gmail (kryterium Gmail-parity)? -->
+<!-- How should it work? How does Gmail do it (Gmail-parity criterion)? -->
 
-## Alternatywy
+## Alternatives
 
-<!-- Rozważone inne podejścia. -->
+<!-- Other approaches considered. -->

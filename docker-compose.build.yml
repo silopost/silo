@@ -1,5 +1,5 @@
-# Nakladka na docker-compose.yml: obrazy budowane z repo-rodzenstwa (../silo-server, ../silo-web)
-# zamiast ghcr.io - przed wydaniem obrazow albo do testu stosu produkcyjnego (smoke):
+# Overlay for docker-compose.yml: images built from the sibling repositories (../silo-server, ../silo-web)
+# instead of ghcr.io - before images are published, or to test the production stack (smoke):
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 services:
   silo-server:
