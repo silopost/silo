@@ -2,7 +2,7 @@
 
 Silo's Postgres holds two kinds of data: a **cache** of mail (messages, folders, threads, system labels, mirror blobs), which synchronization rebuilds from the IMAP server, and **metadata** that exists only in Silo (the IMAP server is the source of truth for mail, [ADR 0005](../adr/0005-imap-source-of-truth.md)). The mail itself is on the IMAP server – backing it up is the job of the mail server's administrator.
 
-The scripts `scripts/backup.sh` and `scripts/restore.sh` work on the `docker compose` stack (the file from `SILO_COMPOSE_FILE`, by default the production `docker-compose.yml`; in dev `SILO_COMPOSE_FILE=docker-compose.dev.yml`), also with the distroless image. Metadata format: [ADR 0014](../adr/0014-metadata-backup-format.md); details of export and import: the `silo-server` README, section "Backup and restore".
+The scripts `scripts/backup.sh` and `scripts/restore.sh` work on the `docker compose` stack (the files from `SILO_COMPOSE_FILE`, one file or a `:`-separated list; unset: `COMPOSE_FILE` from `.env` with the production variant, otherwise the base `docker-compose.yml`; in dev `SILO_COMPOSE_FILE=docker-compose.dev.yml`). `restore.sh full` recreates `silo-server`, so it needs the variant files (`COMPOSE_FILE` or `SILO_COMPOSE_FILE`), otherwise `silo-server` comes back without the settings of the variant, also with the distroless image. Metadata format: [ADR 0014](../adr/0014-metadata-backup-format.md); details of export and import: the `silo-server` README, section "Backup and restore".
 
 ```sh
 scripts/backup.sh metadata --out backups/        # default mode; --user EMAIL: a single user
@@ -23,7 +23,7 @@ Every file gets a `.sha256`; `restore.sh` verifies the checksum when the file is
 - **`SILO_SECRET_KEY`** – mailbox passwords, OAuth2 tokens and TOTP secrets are encrypted with it. Keep the key **separately** from the backups (password manager, safe, another medium); restore with the same key (or with it as `SILO_SECRET_KEY_PREVIOUS`). Without the key, users have to enter their mailbox passwords again and sign in through OAuth2 again.
 - `metadata`: sessions (users sign in again), events, jobs, the mail cache (restored by sync), write-back operations not yet written to the server (`imap_op`, e.g. an archive within the undo window) – `backup.sh` waits up to 60 s (`SILO_BACKUP_WAIT`) for an empty queue, then warns and exports.
 - The S3 bucket with `SILO_BLOB_BACKEND=s3` – `full` archives only the volume; protect the bucket with the provider's tools (versioning, replication, `mc mirror`).
-- The `.env` and `Caddyfile` files – keep them in a configuration repository or a host copy (`.env` contains the key, so separately from the database backups).
+- The `.env` file and any changed proxy configuration (`deploy/caddy/Caddyfile`, nginx `silo.conf`) – keep them in a configuration repository or a host copy (`.env` contains the key, so separately from the database backups).
 
 ## Schedule
 

@@ -36,7 +36,7 @@ For each provider you register exactly one address:
 Example for `SILO_PUBLIC_URL=https://mail.example.com`:
 `https://mail.example.com/api/v1/oauth/google/callback`.
 
-In `docker-compose.yml`, `SILO_PUBLIC_URL` defaults to `https://$SILO_DOMAIN`.
+With the `caddy` variant, `SILO_PUBLIC_URL` defaults to `https://$SILO_DOMAIN`; the `http` and `nginx` variants set it explicitly.
 The address must match character for character (the `https` scheme, the host,
 no trailing slash). Both providers require `https` (the exception is
 `http://localhost` for local tests). If you change `SILO_PUBLIC_URL`, change

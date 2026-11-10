@@ -6,26 +6,32 @@ Separate pages: [backup and restore](backup.md), [OAuth2 for Gmail and Microsoft
 
 ## Production installation
 
-**Requirements:** a Linux host with Docker Engine and Compose v2 (≥ 2.24), a DNS record (A/AAAA) for the instance's domain pointing at the host, open ports 80 and 443 (Caddy obtains an ACME certificate), outbound traffic to mail servers (IMAP 993/143, SMTP 587/465) and HTTPS (ISPDB, OAuth2 providers). Memory: `silo-server` fits in a few hundred MB (200k-message test: max. 77 MiB RSS); the Postgres and blob disk grows with the size of the mirrored mailboxes (limits `SILO_MIRROR_*`).
+**Requirements:** a Linux host with Docker Engine and Compose v2 (≥ 2.24), for the `caddy` variant a DNS record (A/AAAA) for the instance's domain pointing at the host and open ports 80 and 443 (Caddy obtains an ACME certificate), outbound traffic to mail servers (IMAP 993/143, SMTP 587/465) and HTTPS (ISPDB, OAuth2 providers). Memory: `silo-server` fits in a few hundred MB (200k-message test: max. 77 MiB RSS); the Postgres and blob disk grows with the size of the mirrored mailboxes (limits `SILO_MIRROR_*`).
 
-The [`docker-compose.yml`](../../docker-compose.yml) stack (project `silo-prod`): `caddy` (TLS, 80/443, [`Caddyfile`](../../Caddyfile): `/api/v1/events` without buffering, `/api/*` → `silo-server`, everything else → `silo-web`, security headers and HSTS for the SPA), `postgres:17` (volume `pgdata`), `silo-server` (image `ghcr.io/silopost/silo-server:${SILO_SERVER_TAG}`, distroless nonroot, volume `blobs` prepared by `blobs-init`, no host ports) and `silo-web` (`ghcr.io/silopost/silo-web:${SILO_WEB_TAG}`, a static build served by nginx inside the image). The mail server is external.
+The stack (project `silo-prod`) is the base [`docker-compose.yml`](../../docker-compose.yml) plus one variant overlay from `deploy/` that adds the reverse proxy; the variants, when to use which and their commands: [the main README](../../README.md#choose-a-variant). The base: `postgres:17` (volume `pgdata`), `silo-server` (image `ghcr.io/silopost/silo-server:${SILO_SERVER_TAG}`, distroless nonroot, volume `blobs` prepared by `blobs-init`, no host ports) and `silo-web` (`ghcr.io/silopost/silo-web:${SILO_WEB_TAG}`, a static build served by nginx inside the image, without an `/api` proxy). The mail server is external. The variants:
+
+- **`caddy`** ([`deploy/caddy/docker-compose.yml`](../../deploy/caddy/docker-compose.yml), recommended): Caddy with TLS via ACME on 80/443, [`Caddyfile`](../../deploy/caddy/Caddyfile): `/api/v1/events` without buffering, `/api/*` and `/healthz` → `silo-server`, everything else → `silo-web`, security headers and HSTS for the SPA. Requires `SILO_DOMAIN`.
+- **`http`** ([`deploy/http/docker-compose.yml`](../../deploy/http/docker-compose.yml)): the same Caddy and `Caddyfile` with the site address `http://:8080` – plain HTTP on `SILO_HTTP_PORT` (default 8080), no TLS and no HSTS. Requires `SILO_PUBLIC_URL=http://<host>:8080`. Mailbox passwords cross the network in cleartext: only for a trusted network or behind your own TLS terminator.
+- **`nginx`** ([`deploy/nginx/`](../../deploy/nginx/README.md)): behind an existing nginx with certbot (e.g. a Portainer stack): `silo-server` and `silo-web` join the nginx network, an nginx server block and the deployment steps.
+
+Installation with the `caddy` variant (`COMPOSE_FILE` in `.env` saves repeating `-f docker-compose.yml -f deploy/caddy/docker-compose.yml` in every `docker compose` command):
 
 ```sh
-git clone --branch v0.6.0 https://github.com/silopost/silo.git && cd silo
+git clone --branch v0.7.0 https://github.com/silopost/silo.git && cd silo
 cp .env.example .env
 openssl rand -base64 32     # -> SILO_SECRET_KEY
 openssl rand -hex 24        # -> SILO_POSTGRES_PASSWORD
 $EDITOR .env                # production section: SILO_DOMAIN, keys, SILO_DEFAULT_*
-docker compose up -d
+docker compose -f docker-compose.yml -f deploy/caddy/docker-compose.yml up -d
 docker compose logs -f silo-server       # migrations at start-up, then listening on :8080
 curl -fsS https://mail.example.com/healthz && curl -fsS https://mail.example.com/api/v1/meta
 ```
 
-**Behind an existing nginx (e.g. a Portainer stack, no Caddy):** [`deploy/nginx/`](../../deploy/nginx/README.md) – a self-contained compose file, an nginx server block and the deployment steps.
+The commands below write plain `docker compose …` and assume `COMPOSE_FILE` or the `-f` files of the variant (`docker compose exec` works with the base alone).
 
-- **`.env`:** `docker-compose.yml` passes all `SILO_*` variables from `.env` to `silo-server` (`env_file`; another file: `SILO_ENV_FILE`). Required: `SILO_DOMAIN`, `SILO_SECRET_KEY`, `SILO_POSTGRES_PASSWORD` and, in mode `imap`, `SILO_DEFAULT_IMAP_HOST`. `SILO_PUBLIC_URL` defaults to `https://$SILO_DOMAIN` (it must match the address in the browser: `Origin` checks, the `Secure` cookie, the OAuth2 return address).
+- **`.env`:** `docker-compose.yml` passes all `SILO_*` variables from `.env` to `silo-server` (`env_file`; another file: `SILO_ENV_FILE`). Required: `SILO_SECRET_KEY`, `SILO_POSTGRES_PASSWORD`, in mode `imap` `SILO_DEFAULT_IMAP_HOST`, and per variant `SILO_DOMAIN` (`caddy`), `SILO_PUBLIC_URL` (`http`, `nginx`), `SILO_PROXY_NETWORK` and `SILO_TRUSTED_PROXIES` (`nginx`). With `caddy`, `SILO_PUBLIC_URL` defaults to `https://$SILO_DOMAIN` (it must match the address in the browser: `Origin` checks, the `Secure` cookie, the OAuth2 return address).
 - **`SILO_SECRET_KEY`** encrypts mailbox passwords, OAuth2 tokens and TOTP secrets. Keep a copy **separately** from the database backups (password manager, safe). Without the key a backup cannot restore access to the mailboxes; rotation: the `silo-server` README (`rotate-secrets`).
-- **`SILO_TRUSTED_PROXIES`:** the compose network has a fixed subnet `SILO_NETWORK_SUBNET` (default `172.29.250.0/24`, change it on a collision); Caddy comes from it, so only its `X-Forwarded-For` is honored. Caddy does not pass on `X-Forwarded-For` from clients (only from its own trusted proxies), so the header cannot be forged from the outside. Behind an additional load balancer, add its address to `SILO_TRUSTED_PROXIES` and to Caddy's `trusted_proxies` option. Check in the `security event` log that `ip=` shows client addresses and not the Docker gateway (Docker keeps the source address when publishing ports through iptables; `userland-proxy` loses it).
+- **`SILO_TRUSTED_PROXIES`** (variants `caddy` and `http`; for `nginx` see [deploy/nginx](../../deploy/nginx/README.md)): the compose network has a fixed subnet `SILO_NETWORK_SUBNET` (default `172.29.250.0/24`, change it on a collision); Caddy comes from it, so only its `X-Forwarded-For` is honored. Caddy does not pass on `X-Forwarded-For` from clients (only from its own trusted proxies), so the header cannot be forged from the outside. Behind an additional load balancer, add its address to `SILO_TRUSTED_PROXIES` and to Caddy's `trusted_proxies` option. Check in the `security event` log that `ip=` shows client addresses and not the Docker gateway (Docker keeps the source address when publishing ports through iptables; `userland-proxy` loses it).
 - **Default server – docker-mailserver in another compose project on the same host:** attach the mail container to Silo's network with an alias equal to the name in its certificate, so that TLS verifies, and set that name as `SILO_DEFAULT_IMAP_HOST`/`SILO_DEFAULT_SMTP_HOST`. In the docker-mailserver compose file (the `silo-prod_default` network is created by Silo's first `docker compose up`):
 
   ```yaml
@@ -43,7 +49,7 @@ curl -fsS https://mail.example.com/healthz && curl -fsS https://mail.example.com
 
   The default host is trusted (it does not go through the anti-SSRF filter), so a private address is fine. An external server: a public host name, ports 993/`implicit` and 587/`starttls` (or 465/`implicit`).
 - **First start:** `silo-server` waits for a healthy Postgres, runs the migrations (under `pg_advisory_lock`) and starts. Mode `imap`: the first sign-in with mailbox credentials creates the user and their account; admin rights are granted with `docker compose exec silo-server /silo-server user admin --email X --set=true`. Mode `local` – see below.
-- **Building from source** (before images are published, or for testing): `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` with the `silo-server` and `silo-web` repositories next to this one.
+- **Building from source** (before images are published, or for testing): `docker-compose.build.yml` after the variant file, e.g. `docker compose -f docker-compose.yml -f deploy/caddy/docker-compose.yml -f docker-compose.build.yml up -d --build` with the `silo-server` and `silo-web` repositories next to this one.
 - `silo-server` logs: the `json-file` driver with rotation (10 MB × 5); format `SILO_LOG_FORMAT` (`text` in `.env.example`, convenient for fail2ban).
 
 ## Mode `local` and the first admin
@@ -75,7 +81,7 @@ Silo signs in to mailboxes in the background, so it stores the credential revers
 1. Read the release notes and the [compatibility matrix](../compat-matrix.md) (required `silo-server`/`silo-web` pairs, migrations, reindexes).
 2. **Backup:** `scripts/backup.sh full` (and `metadata`) – [backup.md](backup.md).
 3. Bump the image tags: a new tag of the `silo` repository (`git pull && git checkout vX.Y.Z` – the defaults of `SILO_SERVER_TAG`/`SILO_WEB_TAG` in `docker-compose.yml`) or the variables in `.env`.
-4. `docker compose pull && docker compose up -d`. At start-up `silo-server` runs the migrations under `pg_advisory_lock` (`serve --migrate`, enabled by default); state: `docker compose exec silo-server /silo-server migrate version`. Migrations are additive within a release; migrations of cache tables only may require `rebuild-cache` – the changelog says so.
+4. `docker compose pull && docker compose up -d` (with `COMPOSE_FILE` or the `-f` files of the variant; coming from a version with Caddy inside `docker-compose.yml`, use the `caddy` variant – its volumes keep their names and the certificates stay). At start-up `silo-server` runs the migrations under `pg_advisory_lock` (`serve --migrate`, enabled by default); state: `docker compose exec silo-server /silo-server migrate version`. Migrations are additive within a release; migrations of cache tables only may require `rebuild-cache` – the changelog says so.
 5. Client compatibility: `GET /api/v1/meta` returns `minWebVersion` (for 0.7.0: `0.3.0`). An older `silo-web` in an open tab shows a "New version available · Reload" banner; the PWA shows "New app version ready". Upgrade server and web together (the same `docker compose up -d`).
 6. The upgrade path is checked by the `silo-server` CI (`scripts/upgrade-test.sh`, workflow `upgrade.yml`): the image of the previous tag with data (sign-in, messages, a label, a filter, a snooze) → the current image on the same database → the same mailbox, `reconcile` without drift. Locally: 0.3.0 → 0.4.0 + phase 5 (schema 5 → 51) and 0.4.0 → 0.5.0 (9 → 52) PASS.
 7. Rollback: migrations have no automatic `down` between releases – go back to the previous tags and run `scripts/restore.sh full` with the backup from step 2.
@@ -102,7 +108,7 @@ The server-side mechanisms are described in the `silo-server` README (section "H
 
 - **Proxy and client address:** `SILO_TRUSTED_PROXIES` (installation above). Without it, limits and logs see Caddy's address.
 - **Limits:** `SILO_RATE_LIMIT_API` (default `600/m` per IP), `SILO_RATE_LIMIT_AUTH` (`20/m` per IP for sign-in, password change, TOTP; plus a per-login limit); exceeding them → `429 rate_limited` with `Retry-After`. At most 8 SSE streams per user. Limits are kept in process memory (a single instance).
-- **Headers:** API – `silo-server` (CSP `default-src 'none'`, `nosniff`, `DENY`, `no-referrer`, HSTS with `https`; `SILO_HSTS=false` when the proxy sends HSTS itself or subdomains have no HTTPS). SPA – `Caddyfile` (CSP `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `img-src` with `https:`/`http:` for remote images unblocked by the user in the message frame, HSTS `max-age=31536000; includeSubDomains`). With your own proxy, carry these headers over.
+- **Headers:** API – `silo-server` (CSP `default-src 'none'`, `nosniff`, `DENY`, `no-referrer`, HSTS with `https`; `SILO_HSTS=false` when the proxy sends HSTS itself or subdomains have no HTTPS). SPA – [`deploy/caddy/Caddyfile`](../../deploy/caddy/Caddyfile) or `deploy/nginx/silo.conf` (CSP `script-src 'self'`, `style-src 'self' 'unsafe-inline'`, `img-src` with `https:`/`http:` for remote images unblocked by the user in the message frame, HSTS `max-age=31536000; includeSubDomains`). With your own proxy, carry these headers over.
 - **fail2ban:** `silo-server` logs failed sign-ins, TOTP codes, CSRF rejections, `403` and `429` as `msg="security event" event=… ip=… path=… login=<masked>`. In the Docker log file (`json-file`) the quotes are preceded by `\`, hence the filter for `SILO_LOG_FORMAT=text`:
 
   ```ini

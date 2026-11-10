@@ -1,6 +1,7 @@
-# Overlay for docker-compose.yml: images built from the sibling repositories (../silo-server, ../silo-web)
-# instead of ghcr.io - before images are published, or to test the production stack (smoke):
-#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+# Overlay for the production stack (docker-compose.yml + any variant): images built from the sibling
+# repositories (../silo-server, ../silo-web) instead of ghcr.io - before images are published, or to
+# test the production stack (smoke). Put it last, after the variant file:
+#   docker compose -f docker-compose.yml -f deploy/caddy/docker-compose.yml -f docker-compose.build.yml up -d --build
 services:
   silo-server:
     image: silopost-local/silo-server:build

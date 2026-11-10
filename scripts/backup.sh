@@ -11,7 +11,7 @@
 #                         full backup keeps it and saves a resync). With SILO_BLOB_BACKEND=s3 the
 #                         bucket is archived separately.
 # Options: --out DIR (default backups/), --user EMAIL (metadata only: a single user).
-# Environment: SILO_COMPOSE_FILE (default docker-compose.yml), COMPOSE_PROJECT_NAME (as in compose),
+# Environment: SILO_COMPOSE_FILE (default: COMPOSE_FILE from .env, else docker-compose.yml), COMPOSE_PROJECT_NAME (as in compose),
 #   SILO_BACKUP_WAIT (s, default 60: waiting for an empty imap_op queue before the export),
 #   SILO_TAR_IMAGE (default alpine:3.22, the image used to archive the blob volume).
 # Every file gets a .sha256 file. SILO_SECRET_KEY is NOT in the backup: keep it
@@ -22,7 +22,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 export MSYS_NO_PATHCONV=1 # Git Bash on Windows must not "fix" paths in docker arguments
 
-COMPOSE=(docker compose -f "${SILO_COMPOSE_FILE:-docker-compose.yml}")
+# SILO_COMPOSE_FILE: one file or a ":"-separated list (e.g. docker-compose.yml:deploy/http/docker-compose.yml).
+# Unset: plain `docker compose`, which takes COMPOSE_FILE from the environment or .env (the production
+# variant), otherwise docker-compose.yml. Recreating silo-server (restore) needs the variant files.
+COMPOSE=(docker compose)
+if [ -n "${SILO_COMPOSE_FILE:-}" ]; then
+  IFS=: read -ra compose_files <<< "$SILO_COMPOSE_FILE"
+  for compose_file in "${compose_files[@]}"; do COMPOSE+=(-f "$compose_file"); done
+fi
 MODE=metadata
 OUT_DIR=backups
 USER_EMAIL=""

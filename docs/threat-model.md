@@ -6,7 +6,7 @@ State: `silo-server` 0.5.0, `silo-web` 0.4.0 (phase 5). Details of the mechanism
 
 Silo is a mail client running on a server: it signs in to IMAP/SMTP mailboxes **in the background** (IDLE, sync, scheduled sending), keeps a mirror of the mail in Postgres and exposes it to the browser (`silo-web`) and the `silo-mobile` app through `/api/v1`. We assume:
 
-- a single `silo-server` instance behind a reverse proxy with TLS (Caddy from `docker-compose.yml`); Postgres and the blobs are not reachable from the internet;
+- a single `silo-server` instance behind a reverse proxy with TLS (the `caddy` or `nginx` production variant; the plain-HTTP `http` variant only on a trusted network); Postgres and the blobs are not reachable from the internet;
 - the mail server is external and trusted with respect to its user's mailbox content, but **message content is hostile** (anyone can send arbitrary HTML);
 - the instance administrator is trusted (has access to the database and the key); users of the instance do not trust each other.
 

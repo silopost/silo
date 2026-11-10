@@ -1,0 +1,43 @@
+# Variant "nginx": Silo behind an existing nginx reverse proxy with certbot (no Caddy), e.g. a Portainer stack.
+# An overlay for the base docker-compose.yml, which alone defines postgres, blobs-init, silo-server and
+# silo-web; this file only attaches silo-server and silo-web to the network of the nginx container.
+# Relative paths are resolved from the base file's directory. Guide: README.md here; nginx server block: silo.conf.
+#   CLI:       docker compose -f docker-compose.yml -f deploy/nginx/docker-compose.yml up -d
+#   Portainer: Stacks -> Add stack -> Repository: compose path docker-compose.yml,
+#              additional path deploy/nginx/docker-compose.yml, variables from .env.example here.
+services:
+  silo-server:
+    # Portainer writes the stack's environment variables to stack.env; silo-server reads it in
+    # addition to SILO_ENV_FILE (.env), so further SILO_* can be added there.
+    env_file:
+      - path: stack.env
+        required: false
+    # Also passed explicitly from the stack's variables, so that they reach the container even when
+    # no env file is found. They take precedence over the env files.
+    environment:
+      SILO_SECRET_KEY: ${SILO_SECRET_KEY?set SILO_SECRET_KEY (openssl rand -base64 32)}
+      SILO_PUBLIC_URL: ${SILO_PUBLIC_URL:?set SILO_PUBLIC_URL (https://<the Silo domain>)}
+      # nginx connects from the proxy network: X-Forwarded-For is honored only from it.
+      SILO_TRUSTED_PROXIES: ${SILO_TRUSTED_PROXIES:?set SILO_TRUSTED_PROXIES (the subnet of SILO_PROXY_NETWORK)}
+      SILO_AUTH_MODE: ${SILO_AUTH_MODE:-imap}
+      SILO_DEFAULT_IMAP_HOST: ${SILO_DEFAULT_IMAP_HOST-}
+      SILO_DEFAULT_IMAP_PORT: ${SILO_DEFAULT_IMAP_PORT:-993}
+      SILO_DEFAULT_IMAP_TLS: ${SILO_DEFAULT_IMAP_TLS:-implicit}
+      SILO_DEFAULT_SMTP_HOST: ${SILO_DEFAULT_SMTP_HOST-}
+      SILO_DEFAULT_SMTP_PORT: ${SILO_DEFAULT_SMTP_PORT:-587}
+      SILO_DEFAULT_SMTP_TLS: ${SILO_DEFAULT_SMTP_TLS:-starttls}
+      SILO_LOG_FORMAT: ${SILO_LOG_FORMAT:-text}
+    # No host ports: nginx reaches it as silo-server:8080 on the proxy network (the service name
+    # is a DNS alias on every network of the service); the default network leads to postgres
+    # and out to the mail servers. Postgres stays on the default network only.
+    networks: [default, proxy]
+
+  # Reached by nginx as silo-web:80.
+  silo-web:
+    networks: [default, proxy]
+
+networks:
+  # The existing network of the nginx container (docker inspect <nginx container>).
+  proxy:
+    external: true
+    name: ${SILO_PROXY_NETWORK:?set SILO_PROXY_NETWORK (the network of the nginx container)}

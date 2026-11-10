@@ -19,11 +19,18 @@ jobs:
           docker compose -f docker-compose.dev.yml config -q
           docker compose -f docker-compose.backup-test.yml config -q
           docker compose -f docker-compose.backup-test.yml -f docker-compose.local-auth.yml config -q
-          # production stack: .env.example as the env file (an empty key and password pass config)
+          # production stack: the base alone (backup/restore scripts use it) and with each variant;
+          # .env.example as the env file (an empty key and password pass config)
           docker compose --env-file .env.example -f docker-compose.yml config -q
-          docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.build.yml config -q
+          docker compose --env-file .env.example -f docker-compose.yml -f deploy/caddy/docker-compose.yml config -q
+          SILO_PUBLIC_URL=http://localhost:8080 docker compose --env-file .env.example -f docker-compose.yml -f deploy/http/docker-compose.yml config -q
+          docker compose --env-file .env.example --env-file deploy/nginx/.env.example -f docker-compose.yml -f deploy/nginx/docker-compose.yml config -q
+          docker compose --env-file .env.example -f docker-compose.yml -f deploy/caddy/docker-compose.yml -f docker-compose.build.yml config -q
       - name: caddy validate
-        run: docker run --rm -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" -e SILO_DOMAIN=example.com caddy:2.10 caddy validate --config /etc/caddy/Caddyfile
+        run: |
+          for addr in example.com http://:8080; do
+            docker run --rm -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" -e SILO_SITE_ADDRESS="$addr" caddy:2.10 caddy validate --config /etc/caddy/Caddyfile
+          done
 
   lint:
     name: lint yaml and markdown
@@ -33,7 +40,7 @@ jobs:
       - name: yamllint
         run: |
           pip install --quiet yamllint
-          yamllint -d '{extends: relaxed, rules: {line-length: disable}}' docker-compose.yml docker-compose.build.yml docker-compose.dev.yml docker-compose.backup-test.yml docker-compose.local-auth.yml .github
+          yamllint -d '{extends: relaxed, rules: {line-length: disable}}' docker-compose.yml deploy/caddy/docker-compose.yml deploy/http/docker-compose.yml deploy/nginx/docker-compose.yml docker-compose.build.yml docker-compose.dev.yml docker-compose.backup-test.yml docker-compose.local-auth.yml .github
       - name: markdownlint
         uses: DavidAnson/markdownlint-cli2-action@v16
         with:
@@ -41,6 +48,7 @@ jobs:
             README.md
             CONTRIBUTING.md
             docs/**/*.md
+            deploy/**/*.md
           config: .markdownlint.yaml
 
   shellcheck:

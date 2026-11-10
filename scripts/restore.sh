@@ -9,7 +9,7 @@
 #   full      stops silo-server, pg_restore --clean --if-exists of the whole database, optionally
 #             replaces the contents of the blob volume with the archive, starts silo-server.
 #             Overwrites data: asks for confirmation (--yes skips the question; required without a terminal).
-# Environment: SILO_COMPOSE_FILE (default docker-compose.yml), COMPOSE_PROJECT_NAME (as in compose),
+# Environment: SILO_COMPOSE_FILE (default: COMPOSE_FILE from .env, else docker-compose.yml), COMPOSE_PROJECT_NAME (as in compose),
 #   SILO_TAR_IMAGE (default alpine:3.22), SILO_BLOBS_VOLUME (the volume name, when it cannot be determined).
 # Requires the same SILO_SECRET_KEY as the instance the backup comes from (mailbox passwords and TOTP
 # are encrypted with it). When FILE.sha256 lies next to the file, the checksum is verified.
@@ -19,7 +19,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 export MSYS_NO_PATHCONV=1 # Git Bash on Windows must not "fix" paths in docker arguments
 
-COMPOSE=(docker compose -f "${SILO_COMPOSE_FILE:-docker-compose.yml}")
+# SILO_COMPOSE_FILE: one file or a ":"-separated list (e.g. docker-compose.yml:deploy/http/docker-compose.yml).
+# Unset: plain `docker compose`, which takes COMPOSE_FILE from the environment or .env (the production
+# variant), otherwise docker-compose.yml. Recreating silo-server (restore) needs the variant files.
+COMPOSE=(docker compose)
+if [ -n "${SILO_COMPOSE_FILE:-}" ]; then
+  IFS=: read -ra compose_files <<< "$SILO_COMPOSE_FILE"
+  for compose_file in "${compose_files[@]}"; do COMPOSE+=(-f "$compose_file"); done
+fi
 TAR_IMAGE="${SILO_TAR_IMAGE:-alpine:3.22}"
 MODE=""
 FILES=()

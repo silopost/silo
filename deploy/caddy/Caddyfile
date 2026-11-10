@@ -1,7 +1,10 @@
-# Caddy for docker-compose.yml: TLS (ACME; an internal certificate for localhost),
+# Caddy for the production stack, shared by two variants (README.md, "Quick start: production"):
+#   deploy/caddy/docker-compose.yml - SILO_SITE_ADDRESS = $SILO_DOMAIN: TLS via ACME (an internal
+#                                     certificate for localhost), HTTP on :80 redirects to HTTPS;
+#   deploy/http/docker-compose.yml  - SILO_SITE_ADDRESS = http://:8080: plain HTTP, no certificates.
 # /api -> silo-server, everything else -> silo-web (SPA). silo-server sets the API security headers
 # (silo-server README, "Hardening"); here only for the SPA.
-{$SILO_DOMAIN} {
+{$SILO_SITE_ADDRESS} {
 	# SSE: no compression or buffering (events must arrive immediately).
 	handle /api/v1/events {
 		reverse_proxy silo-server:8080 {
@@ -25,13 +28,15 @@
 			# img-src https:/http: allows remote images after clicking "Show images"
 			# (blocked by default by the frame's own CSP), data:/blob: - previews and the TOTP QR code.
 			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
-			Strict-Transport-Security "max-age=31536000; includeSubDomains"
 			X-Content-Type-Options "nosniff"
 			X-Frame-Options "DENY"
 			Referrer-Policy "no-referrer"
 			Permissions-Policy "camera=(), microphone=(), geolocation=()"
 			-Server
 		}
+		# HSTS only over HTTPS (browsers ignore it over HTTP, and it must not pin a plain-HTTP site).
+		@https protocol https
+		header @https Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		reverse_proxy silo-web:80
 	}
 }
