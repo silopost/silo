@@ -11,7 +11,7 @@ Separate pages: [backup and restore](backup.md), [OAuth2 for Gmail and Microsoft
 The [`docker-compose.yml`](../../docker-compose.yml) stack (project `silo-prod`): `caddy` (TLS, 80/443, [`Caddyfile`](../../Caddyfile): `/api/v1/events` without buffering, `/api/*` → `silo-server`, everything else → `silo-web`, security headers and HSTS for the SPA), `postgres:17` (volume `pgdata`), `silo-server` (image `ghcr.io/silopost/silo-server:${SILO_SERVER_TAG}`, distroless nonroot, volume `blobs` prepared by `blobs-init`, no host ports) and `silo-web` (`ghcr.io/silopost/silo-web:${SILO_WEB_TAG}`, a static build served by nginx inside the image). The mail server is external.
 
 ```sh
-git clone --branch v0.5.0 https://github.com/silopost/silo.git && cd silo
+git clone --branch v0.6.0 https://github.com/silopost/silo.git && cd silo
 cp .env.example .env
 openssl rand -base64 32     # -> SILO_SECRET_KEY
 openssl rand -hex 24        # -> SILO_POSTGRES_PASSWORD
@@ -76,7 +76,7 @@ Silo signs in to mailboxes in the background, so it stores the credential revers
 2. **Backup:** `scripts/backup.sh full` (and `metadata`) – [backup.md](backup.md).
 3. Bump the image tags: a new tag of the `silo` repository (`git pull && git checkout vX.Y.Z` – the defaults of `SILO_SERVER_TAG`/`SILO_WEB_TAG` in `docker-compose.yml`) or the variables in `.env`.
 4. `docker compose pull && docker compose up -d`. At start-up `silo-server` runs the migrations under `pg_advisory_lock` (`serve --migrate`, enabled by default); state: `docker compose exec silo-server /silo-server migrate version`. Migrations are additive within a release; migrations of cache tables only may require `rebuild-cache` – the changelog says so.
-5. Client compatibility: `GET /api/v1/meta` returns `minWebVersion` (for 0.5.0: `0.3.0`). An older `silo-web` in an open tab shows a "New version available · Reload" banner; the PWA shows "New app version ready". Upgrade server and web together (the same `docker compose up -d`).
+5. Client compatibility: `GET /api/v1/meta` returns `minWebVersion` (for 0.7.0: `0.3.0`). An older `silo-web` in an open tab shows a "New version available · Reload" banner; the PWA shows "New app version ready". Upgrade server and web together (the same `docker compose up -d`).
 6. The upgrade path is checked by the `silo-server` CI (`scripts/upgrade-test.sh`, workflow `upgrade.yml`): the image of the previous tag with data (sign-in, messages, a label, a filter, a snooze) → the current image on the same database → the same mailbox, `reconcile` without drift. Locally: 0.3.0 → 0.4.0 + phase 5 (schema 5 → 51) and 0.4.0 → 0.5.0 (9 → 52) PASS.
 7. Rollback: migrations have no automatic `down` between releases – go back to the previous tags and run `scripts/restore.sh full` with the backup from step 2.
 
