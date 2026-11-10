@@ -33,7 +33,7 @@ services:
     volumes: [blobs:/data/blobs]
 
   silo-server:
-    image: ${SILO_SERVER_IMAGE:-ghcr.io/silopost/silo-server}:${SILO_SERVER_TAG:-0.8.0}
+    image: ${SILO_SERVER_IMAGE:-ghcr.io/silopost/silo-server}:${SILO_SERVER_TAG:-0.9.0}
     restart: unless-stopped
     # All SILO_* from .env (SILO_SECRET_KEY, SILO_AUTH_MODE, SILO_DEFAULT_*, SILO_OAUTH_*, ...).
     env_file:
@@ -63,7 +63,7 @@ services:
   # Static SPA build served by nginx inside the image (port 80). It does not proxy /api:
   # the proxy of the variant routes /api to silo-server.
   silo-web:
-    image: ${SILO_WEB_IMAGE:-ghcr.io/silopost/silo-web}:${SILO_WEB_TAG:-0.7.0}
+    image: ${SILO_WEB_IMAGE:-ghcr.io/silopost/silo-web}:${SILO_WEB_TAG:-0.8.0}
     restart: unless-stopped
 
 networks:
