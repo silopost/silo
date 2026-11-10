@@ -17,7 +17,7 @@ The stack (project `silo-prod`) is the base [`docker-compose.yml`](../../docker-
 Installation with the `caddy` variant (`COMPOSE_FILE` in `.env` saves repeating `-f docker-compose.yml -f deploy/caddy/docker-compose.yml` in every `docker compose` command):
 
 ```sh
-git clone --branch v0.7.0 https://github.com/silopost/silo.git && cd silo
+git clone --branch v0.8.0 https://github.com/silopost/silo.git && cd silo
 cp .env.example .env
 openssl rand -base64 32     # -> SILO_SECRET_KEY
 openssl rand -hex 24        # -> SILO_POSTGRES_PASSWORD
@@ -82,7 +82,7 @@ Silo signs in to mailboxes in the background, so it stores the credential revers
 2. **Backup:** `scripts/backup.sh full` (and `metadata`) – [backup.md](backup.md).
 3. Bump the image tags: a new tag of the `silo` repository (`git pull && git checkout vX.Y.Z` – the defaults of `SILO_SERVER_TAG`/`SILO_WEB_TAG` in `docker-compose.yml`) or the variables in `.env`.
 4. `docker compose pull && docker compose up -d` (with `COMPOSE_FILE` or the `-f` files of the variant; coming from a version with Caddy inside `docker-compose.yml`, use the `caddy` variant – its volumes keep their names and the certificates stay). At start-up `silo-server` runs the migrations under `pg_advisory_lock` (`serve --migrate`, enabled by default); state: `docker compose exec silo-server /silo-server migrate version`. Migrations are additive within a release; migrations of cache tables only may require `rebuild-cache` – the changelog says so.
-5. Client compatibility: `GET /api/v1/meta` returns `minWebVersion` (for 0.7.0: `0.3.0`). An older `silo-web` in an open tab shows a "New version available · Reload" banner; the PWA shows "New app version ready". Upgrade server and web together (the same `docker compose up -d`).
+5. Client compatibility: `GET /api/v1/meta` returns `minWebVersion` (for 0.8.0: `0.3.0`). An older `silo-web` in an open tab shows a "New version available · Reload" banner; the PWA shows "New app version ready". Upgrade server and web together (the same `docker compose up -d`).
 6. The upgrade path is checked by the `silo-server` CI (`scripts/upgrade-test.sh`, workflow `upgrade.yml`): the image of the previous tag with data (sign-in, messages, a label, a filter, a snooze) → the current image on the same database → the same mailbox, `reconcile` without drift. Locally: 0.3.0 → 0.4.0 + phase 5 (schema 5 → 51) and 0.4.0 → 0.5.0 (9 → 52) PASS.
 7. Rollback: migrations have no automatic `down` between releases – go back to the previous tags and run `scripts/restore.sh full` with the backup from step 2.
 
