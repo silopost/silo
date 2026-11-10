@@ -5,7 +5,7 @@ Android client with the Gmail experience (threads, labels, snooze, undo send, fa
 keyboard shortcuts, real-time updates) that runs on your server against any IMAP/SMTP mailbox.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.8.0-informational.svg)](https://github.com/silopost/silo/releases)
+[![Release](https://img.shields.io/badge/release-v0.9.0-informational.svg)](https://github.com/silopost/silo/releases)
 [![CI](https://github.com/silopost/silo/actions/workflows/ci.yml/badge.svg)](https://github.com/silopost/silo/actions/workflows/ci.yml)
 
 This repository (`silo`) is the entry point of the project: the Docker Compose stacks for
@@ -119,7 +119,7 @@ The fine print:
 | [`silo-web`](https://github.com/silopost/silo-web) | AGPL-3.0 | React/TypeScript single-page app and PWA, consumer of the OpenAPI contract | `ghcr.io/silopost/silo-web` |
 | [`silo-mobile`](https://github.com/silopost/silo-mobile) | AGPL-3.0 | React Native/Expo app (Android; iOS later), thin client of the same API with bearer sign-in | `expo export` bundle in CI; APK via `expo prebuild` + Gradle (distribution not set up yet) |
 
-Current versions: `silo` 0.8.0, `silo-server` 0.8.0, `silo-web` 0.7.0, `silo-mobile` 0.1.0
+Current versions: `silo` 0.9.0, `silo-server` 0.9.0, `silo-web` 0.8.0, `silo-mobile` 0.1.0
 (unreleased). Which versions work together: [compatibility matrix](docs/compat-matrix.md).
 
 ## Requirements
@@ -182,7 +182,7 @@ variants keeps the data: `down` with the old files, `up -d` with the new ones.
 ### Install (variant `caddy`)
 
 ```sh
-git clone --branch v0.8.0 https://github.com/silopost/silo.git && cd silo
+git clone --branch v0.9.0 https://github.com/silopost/silo.git && cd silo
 cp .env.example .env
 openssl rand -base64 32     # -> SILO_SECRET_KEY
 openssl rand -hex 24        # -> SILO_POSTGRES_PASSWORD
@@ -369,8 +369,8 @@ The complete list of `silo-server` variables, with defaults and validation rules
 | `SILO_PUBLIC_URL` | `caddy`: `https://$SILO_DOMAIN`; `http`, `nginx`: – (required) | Public URL. Must match the address in the browser (Origin check, `Secure` cookie, OAuth2 redirect). With `caddy`, change it only for another port or path. |
 | `SILO_SECRET_KEY` | – (required) | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts mailbox passwords, OAuth2 tokens and TOTP secrets. Keep a copy separate from backups. Empty stops start-up. |
 | `SILO_POSTGRES_PASSWORD` | – (required) | Postgres password inside the Compose network, without characters that need URL encoding (`openssl rand -hex 24`). Empty stops start-up. |
-| `SILO_SERVER_TAG` | `0.8.0` | Image tag of `ghcr.io/silopost/silo-server`. |
-| `SILO_WEB_TAG` | `0.7.0` | Image tag of `ghcr.io/silopost/silo-web`. |
+| `SILO_SERVER_TAG` | `0.9.0` | Image tag of `ghcr.io/silopost/silo-server`. |
+| `SILO_WEB_TAG` | `0.8.0` | Image tag of `ghcr.io/silopost/silo-web`. |
 | `SILO_SERVER_IMAGE` / `SILO_WEB_IMAGE` | `ghcr.io/silopost/silo-server` / `ghcr.io/silopost/silo-web` | Image repositories, e.g. your own registry. |
 | `SILO_HTTP_PORT` / `SILO_HTTPS_PORT` | `caddy`: `80` / `443`; `http`: `8080` / – | Host ports of Caddy (HTTPS also on UDP for HTTP/3). `127.0.0.1:8080` publishes on loopback only. |
 | `SILO_NETWORK_SUBNET` | `172.29.250.0/24` | Fixed subnet of the Compose network (Caddy connects from it); change it on collision. |
@@ -532,7 +532,7 @@ Dovecot `passdb` for your own server. Silo stores mailbox credentials reversibly
    Caddy was part of `docker-compose.yml` (the `Caddyfile` in the repository root): use the
    `caddy` variant (`COMPOSE_FILE=docker-compose.yml:deploy/caddy/docker-compose.yml`); its
    volumes keep their names, so the certificates stay.
-5. `GET /api/v1/meta` reports `minWebVersion` (`0.3.0` for server 0.8.0); open tabs of an older
+5. `GET /api/v1/meta` reports `minWebVersion` (`0.3.0` for server 0.9.0); open tabs of an older
    silo-web ask the user to reload. Upgrade server and web together.
 6. There is no automatic downgrade between releases: go back to the previous tags and run
    `scripts/restore.sh full` with the backup from step 2.
