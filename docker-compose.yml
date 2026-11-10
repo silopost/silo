@@ -47,7 +47,7 @@ services:
     volumes: [blobs:/data/blobs]
 
   silo-server:
-    image: ghcr.io/silopost/silo-server:${SILO_SERVER_TAG:-0.6.0}
+    image: ghcr.io/silopost/silo-server:${SILO_SERVER_TAG:-0.7.0}
     restart: unless-stopped
     # All SILO_* from .env (SILO_SECRET_KEY, SILO_AUTH_MODE, SILO_DEFAULT_*, SILO_OAUTH_*, ...).
     env_file:
@@ -73,7 +73,7 @@ services:
 
   # Static SPA build served by nginx inside the image (port 80 on the compose network).
   silo-web:
-    image: ghcr.io/silopost/silo-web:${SILO_WEB_TAG:-0.5.0}
+    image: ghcr.io/silopost/silo-web:${SILO_WEB_TAG:-0.6.0}
     restart: unless-stopped
 
 networks:
