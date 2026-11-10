@@ -21,6 +21,8 @@ docker compose logs -f silo-server       # migrations at start-up, then listenin
 curl -fsS https://mail.example.com/healthz && curl -fsS https://mail.example.com/api/v1/meta
 ```
 
+**Behind an existing nginx (e.g. a Portainer stack, no Caddy):** [`deploy/nginx/`](../../deploy/nginx/README.md) – a self-contained compose file, an nginx server block and the deployment steps.
+
 - **`.env`:** `docker-compose.yml` passes all `SILO_*` variables from `.env` to `silo-server` (`env_file`; another file: `SILO_ENV_FILE`). Required: `SILO_DOMAIN`, `SILO_SECRET_KEY`, `SILO_POSTGRES_PASSWORD` and, in mode `imap`, `SILO_DEFAULT_IMAP_HOST`. `SILO_PUBLIC_URL` defaults to `https://$SILO_DOMAIN` (it must match the address in the browser: `Origin` checks, the `Secure` cookie, the OAuth2 return address).
 - **`SILO_SECRET_KEY`** encrypts mailbox passwords, OAuth2 tokens and TOTP secrets. Keep a copy **separately** from the database backups (password manager, safe). Without the key a backup cannot restore access to the mailboxes; rotation: the `silo-server` README (`rotate-secrets`).
 - **`SILO_TRUSTED_PROXIES`:** the compose network has a fixed subnet `SILO_NETWORK_SUBNET` (default `172.29.250.0/24`, change it on a collision); Caddy comes from it, so only its `X-Forwarded-For` is honored. Caddy does not pass on `X-Forwarded-For` from clients (only from its own trusted proxies), so the header cannot be forged from the outside. Behind an additional load balancer, add its address to `SILO_TRUSTED_PROXIES` and to Caddy's `trusted_proxies` option. Check in the `security event` log that `ip=` shows client addresses and not the Docker gateway (Docker keeps the source address when publishing ports through iptables; `userland-proxy` loses it).
