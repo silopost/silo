@@ -715,11 +715,10 @@ Silopost is pre-1.0. The scope planned for 1.0 is implemented (`silo` 0.5.0 with
 - Filters run in Silo (on new INBOX mail while Silo runs); they are not exported as Sieve scripts.
 - No folder role mapping in the UI yet (the API `PUT /accounts/{id}/folders` exists; roles are
   detected from SPECIAL-USE and folder names). No bounce/DSN handling, no PDF thumbnails or viewer.
-- **silo-mobile 0.1.0 is unreleased and has never been run on a device or an emulator.** It is
-  verified by typecheck, lint, 405 tests (jest-expo + msw), an Android Hermes bundle
-  (`expo export`, 8.4 MB) and a read-only API smoke test (14/14). Gestures, the editor keyboard,
-  WebView and pickers still need checking on a device; iOS is not checked at all. Its UI is in
-  Polish only for now.
+- **silo-mobile 0.1.0 is unreleased and has run only in a debug build on an Android 15 emulator.**
+  Push notifications were checked there (2026-11-26); it has not been tried on a physical device,
+  in a release build or on iOS. It is verified by typecheck, lint, 476 tests (jest-expo + msw), an
+  Android Hermes bundle and a read-only API smoke test. Its UI is in English and Polish.
 
 **Next (1.1)**: Gmail mode with `X-GM-LABELS`/`X-GM-MSGID`/`X-GM-THRID`, ManageSieve, OAuth2 for
 native clients, a delta API for offline clients (`GET /changes`, `ETag` on lists), and for
