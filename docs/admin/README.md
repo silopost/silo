@@ -189,3 +189,12 @@ silo-server rebuild-cache --account 1 --yes  # without asking for confirmation
 - The full-text index (`messages.search_tsv`) is built by the application's tokenizer ([ADR 0008](../adr/0008-search-tokenizer-in-app.md)); every row has a tokenizer version (`messages.search_ver`).
 - After an upgrade to a version with a new tokenizer (the first time: 0.3.0 → 0.4.0, migration `000006_search_index`), `silo-server` reindexes rows with an older version in the background at start-up, in batches of 500 (log `search index rebuilt messages=… took=…`; in dev 5158 messages in < 1 s). Until the reindex finishes, results for older messages may be incomplete; the search response then carries `indexing`, and the UI shows "Indexing content".
 - The 0.4.0 migrations (`000006`–`000009`) are additive (new columns, tables, indexes) and run automatically at start-up (`serve`, unless `--migrate=false`). Back up Postgres before upgrading.
+
+## Push notifications (silo-mobile)
+
+New-mail notifications for `silo-mobile` need **no configuration**: no Firebase, Apple or Expo keys, and you do not build the app ([ADR 0016](../adr/0016-push-through-expo-push-service.md)). The server sends them through the Expo Push Service, which forwards them to Google (FCM). Push is implemented, covered by automated tests and checked on an Android emulator (2026-11-26), but not yet verified on a physical device and not yet released.
+
+- **Network:** the instance needs outbound HTTPS (443) to `exp.host`. The server contacts Expo only once a user has enabled notifications in the app.
+- **Turning it off:** `SILO_PUSH_ENABLED=false` in `.env` and `docker compose up -d`. `GET /api/v1/meta` then reports no push providers, `POST /devices` answers `403 push_disabled` and nothing is sent.
+- **What leaves the instance:** the device's push token, a generic title ("New message" / "N new messages") and opaque identifiers (`accountId`, `threadId`, a count). Never the sender, subject, body or an e-mail address. Expo and Google can see that a device received mail at a given time.
+- **Limits:** a notification for a phone needs Google Play Services and an app build with the publisher's Firebase and Expo configuration. Signing out of the app or an expired session ends push for that device. Details: the `silo-server` README, section "Push notifications".

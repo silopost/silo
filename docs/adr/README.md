@@ -19,3 +19,4 @@ Format: [0000-template.md](0000-template.md). Rules for adding ADRs: [CONTRIBUTI
 | [0013](0013-oauth2-xoauth2.md) | OAuth2 (authorization code + PKCE) and XOAUTH2 for Gmail and Microsoft 365 | Accepted |
 | [0014](0014-metadata-backup-format.md) | Metadata backup format `silo-metadata` v1 | Accepted |
 | [0015](0015-i18n-typed-dictionaries.md) | Multilingual UI: English as the source language, typed dictionaries, `settings.language` | Accepted |
+| [0016](0016-push-through-expo-push-service.md) | Push notifications of `silo-mobile` through the Expo Push Service | Accepted |
